@@ -4,11 +4,11 @@ mod systems;
 
 
 use systems::*;
-use components::*;
+
 
 use bevy::prelude::*;
 
-use self::objects::FoodBowl;
+
 pub struct ObjectPlugin;
 
 impl Plugin for ObjectPlugin {

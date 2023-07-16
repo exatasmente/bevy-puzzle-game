@@ -89,7 +89,7 @@ fn mouse_hover(translation: Vec3, delta: Vec2) -> bool {
     let delta_x = delta.x;
     let delta_y = delta.y;
     
-    let bounding_box = (Vec2::new((x - (TILE_SIZE/2.0)) - 1.0, (y - (TILE_SIZE/2.0)))- 1.0, Vec2::new((x + (TILE_SIZE/2.0)) - 1.0, (y + (TILE_SIZE/2.0)- 1.0)));
+    let bounding_box = (Vec2::new((x - (TILE_SIZE/2.0)) - 1.0, y - (TILE_SIZE/2.0))- 1.0, Vec2::new((x + (TILE_SIZE/2.0)) - 1.0, y + (TILE_SIZE/2.0)- 1.0));
 
     
     if (bounding_box.0.x..bounding_box.1.x)

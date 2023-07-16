@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use bevy_prototype_lyon::prelude::*;
+
 pub const TILE_SIZE : f32 = 80.0;
 
 pub const NO_OF_COLUMNS: usize = 6;
@@ -107,7 +107,7 @@ pub fn spawn_cards(
 }
 
 fn get_sprite(sprite_index: usize) -> TextureAtlasSprite {
-    let mut sprite =  TextureAtlasSprite::new(sprite_index);
+    let sprite =  TextureAtlasSprite::new(sprite_index);
     sprite.clone()
 }
 

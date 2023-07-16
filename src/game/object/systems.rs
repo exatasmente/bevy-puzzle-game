@@ -1,4 +1,4 @@
-use bevy::{prelude::*, transform::commands};
+use bevy::{prelude::*};
 use bevy_prototype_lyon::prelude::*;
 
 use super::components::Object;
@@ -24,7 +24,7 @@ pub fn object_interaction(
 
 ) {
     for player_transform in player_query.iter() {
-        for (object_transform,mut object, object_entity) in object_query.iter_mut() {
+        for (object_transform,_object, object_entity) in object_query.iter_mut() {
             if object_transform.translation.distance(player_transform.translation) < 10.0 {
                 commands.entity(object_entity).insert(PlayerCanInteract);
             } else {
@@ -64,7 +64,7 @@ pub fn spawn_objects(
 }
 
 pub fn interact_with_food_bowl(
-    mut commands: Commands,
+    _commands: Commands,
     mut object_query: Query<(&mut Fill, &mut FoodBowl), (With<Object>, With<PlayerCanInteract>, Without<Player>)>,
     mut player_query: Query<&mut PlayerStats>,
     keyboard_input: Res<Input<KeyCode>>,

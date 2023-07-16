@@ -4,7 +4,7 @@ mod systems;
 
 use player::PlayerPlugin;
 use object::ObjectPlugin;
-use systems::*;
+
 use object::objects::FoodBowl;
 
 use bevy::prelude::*;

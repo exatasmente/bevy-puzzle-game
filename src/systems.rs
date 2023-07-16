@@ -1,16 +1,16 @@
 use bevy::app::AppExit;
 use bevy::prelude::*;
-use bevy::window::PrimaryWindow;
+
 
 use crate::events::*;
 use crate::AppState;
 
 pub fn spawn_camera(
     mut commands: Commands,
-    asset_server: Res<AssetServer>,
-    mut texture_atlases: ResMut<Assets<TextureAtlas>>,
+    _asset_server: Res<AssetServer>,
+    _texture_atlases: ResMut<Assets<TextureAtlas>>,
 ) {
-    let mut camera_bundle = Camera2dBundle::default();
+    let camera_bundle = Camera2dBundle::default();
     commands.spawn(camera_bundle);
 }
 

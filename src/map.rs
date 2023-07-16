@@ -1,5 +1,5 @@
-use std::{hash::Hash, collections::HashMap};
-use bevy_utils::synccell::SyncCell;
+use std::{hash::Hash};
+
 use bevy::prelude::*;
 use crate::mouse_motion::Draggable;
 
@@ -38,7 +38,7 @@ pub struct Map {
 impl Map {
 
     fn new(map_width : usize, map_height : usize) -> Self {
-        let mut tiles = Vec::new();
+        let tiles = Vec::new();
         
         let mut map = Self {
             tiles : tiles,
@@ -71,7 +71,7 @@ impl Map {
 
     }
 
-    fn get_tile_type(&self, x : usize, y : usize) -> TileType {
+    fn get_tile_type(&self, x : usize, _y : usize) -> TileType {
         
         if x <= 4 {
             return TileType::Water;
@@ -152,7 +152,7 @@ impl Plugin for MapPlugin {
 fn generate_map(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
-    mut texture_atlases: ResMut<Assets<TextureAtlas>>,
+    _texture_atlases: ResMut<Assets<TextureAtlas>>,
 ) {
     let texture_handle = asset_server.load("3000.png");
     let house_texture_handle = asset_server.load("2.png");
@@ -180,11 +180,11 @@ fn generate_map(
 }
 
 fn despaw_map(
-    mut commands: Commands,
-    mut map_res : Res<Map>,
+    _commands: Commands,
+    _map_res : Res<Map>,
 ) {
-    for i in 0..16 {
-        for j in 0..16 {
+    for _i in 0..16 {
+        for _j in 0..16 {
 
         }
     }

@@ -23,13 +23,13 @@ pub fn spawn_player(
         TextureAtlas::from_grid(texture_handle, Vec2::new(90.0, 90.0), 4, 8, None, Some(Vec2::new(0.0, 0.0)));
     let texture_atlas_handle = texture_atlases.add(texture_atlas);
 
-    let entity = commands.spawn((PlayerBundle::new(AnimationBundle::new(
+    let entity = commands.spawn(PlayerBundle::new(AnimationBundle::new(
         texture_atlas_handle.clone(),
         Transform::from_translation(Vec3::new(0.0,0.0, 0.0)),
         (0..4).collect(),
         Timer::new(Duration::from_secs_f32(0.19), TimerMode::Repeating),
         Some(0)
-    ), 0.3))).id();
+    ), 0.3)).id();
 
     let camera = camera_query.single_mut();
     commands.entity(camera).despawn();
@@ -58,7 +58,7 @@ pub fn despawn_player(mut commands: Commands, player_query: Query<Entity, With<P
 pub fn player_movement(
     keyboard_input: Res<Input<KeyCode>>,
     mut player_query: Query<(&mut Transform, &mut AnimationController, &mut Player), With<Player>>,
-    time: Res<Time>,
+    _time: Res<Time>,
 ) {
 
     let (mut transform, mut animation_controller, mut player) = if player_query.is_empty() {
@@ -67,7 +67,7 @@ pub fn player_movement(
         player_query.single_mut()
     };
 
-    let mut direction = Vec3::ZERO;
+    let _direction = Vec3::ZERO;
     let mut new_state = player.current_state;
 
     if keyboard_input.pressed(KeyCode::Left) || keyboard_input.pressed(KeyCode::A) {
@@ -128,7 +128,7 @@ pub fn update_player_tirsty(
     mut player_query: Query<(&mut PlayerStats, &mut Player), With<Player>>,
     time: Res<Time>,
 ) {
-    if let Ok((mut player_stats, mut player)) = player_query.get_single_mut() {
+    if let Ok((mut player_stats, _player)) = player_query.get_single_mut() {
         player_stats.stats_timer.tick(time.delta());
 
         if player_stats.stats_timer.finished() {
