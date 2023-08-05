@@ -17,7 +17,7 @@ pub fn player_interaction(
     camera_q: Query<(&Camera, &GlobalTransform, &BackgroundTranstion)>,
     event_click  : Res<Input<MouseButton>>,
     touches: Res<Touches>,
-    object_query: Query<(&Transform,&mut Fill, &PuzzleColor), With<PuzzleColor>>,
+    mut object_query: Query<(&Transform,&mut Fill, &PuzzleColor), With<PuzzleColor>>,
     mut puzzle: ResMut<ColorPuzzle>,
     mut start_level_event_writer: EventWriter<StartLevelEvent>,
     last_click_query: Query<Entity, With<LastClick>>,
@@ -48,7 +48,7 @@ pub fn player_interaction(
                 10.0,
                 10.0,
             ),
-            origin: shapes::RectangleOrigin::Center,
+            origin: shapes::RectangleOrigin::BottomLeft,
         };
 
         commands
@@ -64,23 +64,36 @@ pub fn player_interaction(
         );
         
 
-        for (transform,mut fill, puzzle_color) in object_query.iter() {
+        for (transform,mut fill, puzzle_color) in object_query.iter_mut() {
             if mouse_hover(transform.translation, world_position, puzzle.shape_size) && puzzle_color.is_correct_color {
                 puzzle.increase_score();
             } else if puzzle_color.is_correct_color {
+                fill.color = Color::WHITE;
                 commands
                 .spawn(( 
                     ShapeBundle {
                         path: GeometryBuilder::build_as(&shape),
-                        transform: Transform::from_xyz((transform.translation.x + puzzle.shape_size) / 2.0, (transform.translation.y  + puzzle.shape_size) / 2.0 , 1.0),
+                        transform: Transform::from_xyz(transform.translation.x + puzzle.shape_size /2.0, transform.translation.y  + puzzle.shape_size /2.0 , 1.0),
                         ..default()
                     },
-                    Fill::color(Color::BLUE),
+                    Fill::color(Color::BLACK),
                     LastClick,        
-                )
-            );
-            
+                ));
+            } else {
+                fill.color = Color::BLACK;
+                commands
+                .spawn(( 
+                    ShapeBundle {
+                        path: GeometryBuilder::build_as(&shape),
+                        transform: Transform::from_xyz(transform.translation.x + puzzle.shape_size /2.0, transform.translation.y  + puzzle.shape_size /2.0 , 1.0),
+                        ..default()
+                    },
+                    Fill::color(Color::WHITE),
+                    LastClick,        
+                ));
             }
+        
+
         }
 
         start_level_event_writer.send(StartLevelEvent);    
