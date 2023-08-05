@@ -23,6 +23,7 @@ impl Plugin for GameOverMenuPlugin {
                     interact_with_level_history_option,
                     interact_with_quit_button,
                     update_final_score_text,
+                    mouse_scroll,
                 )
                     .in_set(OnUpdate(AppState::GameOver)),
             )
