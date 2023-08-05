@@ -64,7 +64,7 @@ impl ColorPuzzle {
             seconds_added_per_success: 3.0,
             shape_size: 200.0,
             start_seconds: 60.0,
-            transition_seconds: 2.0,
+            transition_seconds: 1.2,
             width: 800.0,
             height: 600.0,
             screen_padding : 50.0,
