@@ -1,8 +1,6 @@
-pub mod player;
+
 pub mod object;
 mod systems;
-
-use player::PlayerPlugin;
 use object::ObjectPlugin;
 
 use object::objects::FoodBowl;
@@ -12,7 +10,8 @@ use bevy::prelude::*;
 use crate::events::GameOver;
 use crate::AppState;
 
-use self::player::components::PlayerStats;
+
+use self::object::objects::ColorPuzzle;
 
 pub struct GamePlugin;
 
@@ -21,10 +20,8 @@ impl Plugin for GamePlugin {
         app
             // Events
             .add_event::<GameOver>()
-            .add_plugin(PlayerPlugin)
             .add_plugin(ObjectPlugin)
-            .register_type::<FoodBowl>()
-            .register_type::<PlayerStats>();
+            .register_type::<FoodBowl>();
     }
 }
 

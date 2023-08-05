@@ -26,7 +26,7 @@ impl Plugin for PlayerPlugin {
             // Systems
             .add_systems(
                 (
-                    player_movement.in_set(MovementSystemSet),
+                
                     update_player_tirsty,
                 )
                     .in_set(OnUpdate(AppState::Game))

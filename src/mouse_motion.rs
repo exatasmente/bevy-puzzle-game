@@ -1,7 +1,6 @@
 use bevy::prelude::*;
 use bevy::input::mouse::MouseMotion;
 pub struct MouseMotionPlugin;
-use crate::tilemap::TILE_SIZE;
 
 #[derive(Component)]
 struct MouseDrag {
@@ -84,25 +83,7 @@ fn update_mouse_motion(
     }
 }
 fn mouse_hover(translation: Vec3, delta: Vec2) -> bool {
-    let x = translation.x;
-    let y = translation.y;
-    let delta_x = delta.x;
-    let delta_y = delta.y;
-    
-    let bounding_box = (Vec2::new((x - (TILE_SIZE/2.0)) - 1.0, y - (TILE_SIZE/2.0))- 1.0, Vec2::new((x + (TILE_SIZE/2.0)) - 1.0, y + (TILE_SIZE/2.0)- 1.0));
 
-    
-    if (bounding_box.0.x..bounding_box.1.x)
-    .contains(&delta_x)
-    && (bounding_box.0.y..bounding_box.1.y)
-      .contains(&delta_y)
-    {
-        println!("HOVER: {:?} {:?}", bounding_box, delta);
-        return true;
-    }
-
-    
-    
     false
 }
 

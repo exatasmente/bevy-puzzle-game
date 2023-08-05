@@ -34,7 +34,7 @@ pub fn build_main_menu(commands: &mut Commands, asset_server: &Res<AssetServer>)
                     parent.spawn(TextBundle {
                         text: Text {
                             sections: vec![TextSection::new(
-                                "Bevy Ball Game",
+                                "Bevy Puzzle Game",
                                 get_title_text_style(&asset_server),
                             )],
                             alignment: TextAlignment::Center,
@@ -57,7 +57,7 @@ pub fn build_main_menu(commands: &mut Commands, asset_server: &Res<AssetServer>)
                     parent.spawn(TextBundle {
                         text: Text {
                             sections: vec![TextSection::new(
-                                "Play",
+                                "Jogar",
                                 get_button_text_style(&asset_server),
                             )],
                             alignment: TextAlignment::Center,
@@ -80,7 +80,7 @@ pub fn build_main_menu(commands: &mut Commands, asset_server: &Res<AssetServer>)
                     parent.spawn(TextBundle {
                         text: Text {
                             sections: vec![TextSection::new(
-                                "Quit",
+                                "Sair",
                                 get_button_text_style(&asset_server),
                             )],
                             alignment: TextAlignment::Center,

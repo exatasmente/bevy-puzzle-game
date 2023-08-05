@@ -7,15 +7,13 @@ pub struct PlayerCanInteract;
 pub struct Object {
     velocity : f32,
     direction : Vec2,
-    interaction_callback : usize,
 }
 
 impl Object {
-    pub fn new(velocity : f32, direction : Vec2 , interaction_callback : usize) -> Self {
+    pub fn new(velocity : f32, direction : Vec2 ) -> Self {
         Self {
             velocity,
             direction,
-            interaction_callback,
         }
     }
 
@@ -33,10 +31,6 @@ impl Object {
 
     pub fn set_direction(&mut self, direction : Vec2) {
         self.direction = direction;
-    }
-
-    pub fn get_interaction_callback(&self) -> usize {
-        self.interaction_callback
     }
 
     pub fn generate_movement_vector(&self) -> Vec2 {
@@ -58,7 +52,5 @@ impl Object {
         current_position
     }
 
-    pub fn set_interaction_callback(&mut self, interaction_callback : usize) {
-        self.interaction_callback = interaction_callback;
-    }
+
 }

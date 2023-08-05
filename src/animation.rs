@@ -7,6 +7,7 @@ pub struct AnimationController {
     frame_indices : Vec<usize>,
     first_run : bool,
     pub animation_timer : Timer,
+    frame_duration : Vec<f32>,
 }
 
 #[derive(Bundle)]
@@ -16,7 +17,7 @@ pub struct AnimationBundle {
 }
 
 impl AnimationController {
-    fn new(frame_indices : Vec<usize>, timer : Timer, current_index : Option<usize>) -> Self {
+    fn new(frame_indices : Vec<usize>, timer : Timer, current_index : Option<usize>, frame_duration : Vec<f32>) -> Self {
         let mut instance = Self {
             frame_indices : Vec::new(),
             current_index : match current_index {
@@ -25,6 +26,7 @@ impl AnimationController {
             },
             first_run : true,
             animation_timer : timer,
+            frame_duration,
         };
 
         instance.set_values(frame_indices[0], frame_indices[frame_indices.len() - 1]);
@@ -58,12 +60,25 @@ impl AnimationController {
             return self.get_last();
         }
 
+
+
         if self.is_first_run() {
             self.set_first_run(false);
             return self.frame_indices[0];
         }
         
         self.get_next_frame()
+    }
+
+    fn update_timer(&mut self) {
+        self.animation_timer.reset();
+        let mut secs = self.animation_timer.duration().as_secs_f32();
+
+        if self.current_index <= self.frame_duration.len() - 1 {
+            secs = self.frame_duration[self.current_index];
+        }
+
+        self.animation_timer.set_duration(Duration::from_secs_f32(secs));
     }
 
     pub fn set_values(&mut self, first : usize, last : usize) {
@@ -113,10 +128,11 @@ impl AnimationBundle {
         transform : Transform,
         frame_indices : Vec<usize>, 
         timer : Timer, 
-        current_index : Option<usize>
+        current_index : Option<usize>,
+        duration : Vec<f32>
     ) -> Self {
         
-        let animation_controller = AnimationController::new(frame_indices, timer, current_index);
+        let animation_controller = AnimationController::new(frame_indices, timer, current_index, duration);
 
 
         Self {

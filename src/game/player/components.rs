@@ -1,5 +1,4 @@
 use bevy::prelude::*;
-use crate::animation::AnimationBundle;
 
 
 #[derive(Component, Reflect, Default, PartialEq, Clone, Copy, Debug)]
@@ -43,7 +42,7 @@ impl Player {
 
     pub fn get_state_frames(&mut self) -> Vec<usize>{
         match self.current_state {
-         PlayerState::Idle => (19..24).collect(),
+         PlayerState::Idle =>  vec![18,19,20, 21,22,23, 21,22,23, 21,22,23, 21,22,23, 21,22,23, 21,22,23, 21,22,23],
          PlayerState::WalkForward => (0..3).collect(),
          PlayerState::WalkBackward => (8..11).collect(),
          PlayerState::WalkLeft => (12..15).collect(),
