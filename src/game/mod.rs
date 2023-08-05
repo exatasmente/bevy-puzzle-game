@@ -1,17 +1,15 @@
 
 pub mod object;
+pub mod puzzle;
 mod systems;
-use object::ObjectPlugin;
 
-use object::objects::FoodBowl;
+use puzzle::PuzzlePlugin;
+use object::ObjectPlugin;
 
 use bevy::prelude::*;
 
 use crate::events::GameOver;
 use crate::AppState;
-
-
-use self::object::objects::ColorPuzzle;
 
 pub struct GamePlugin;
 
@@ -21,7 +19,7 @@ impl Plugin for GamePlugin {
             // Events
             .add_event::<GameOver>()
             .add_plugin(ObjectPlugin)
-            .register_type::<FoodBowl>();
+            .add_plugin(PuzzlePlugin);
     }
 }
 
