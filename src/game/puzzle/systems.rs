@@ -258,7 +258,7 @@ pub fn spawn_objects(
                 puzzle.shape_size,
                 puzzle.shape_size,
             ),
-            origin: shapes::RectangleOrigin::Center,
+            origin: shapes::RectangleOrigin::BottomLeft,
         };
 
         if index % N_OF_COLS == 0 {
