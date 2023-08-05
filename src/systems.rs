@@ -141,6 +141,19 @@ pub fn transition_to_main_menu_state(
     }
 }
 
+pub fn transition_to_game_over_state(
+    keyboard_input: Res<Input<KeyCode>>,
+    app_state: Res<State<AppState>>,
+    mut app_state_next_state: ResMut<NextState<AppState>>,
+) {
+    if keyboard_input.just_pressed(KeyCode::H) {
+        if app_state.0 != AppState::GameOver {
+            app_state_next_state.set(AppState::GameOver);
+            println!("Entered AppState::GameOver");
+        }
+    }
+}
+
 pub fn handle_game_over(
     mut game_over_event_reader: EventReader<GameOver>,
     mut app_state_next_state: ResMut<NextState<AppState>>,

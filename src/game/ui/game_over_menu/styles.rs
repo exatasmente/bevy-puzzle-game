@@ -34,24 +34,24 @@ pub const BUTTON_STYLE: Style = Style {
 
 pub fn get_title_text_style(asset_server: &Res<AssetServer>) -> TextStyle {
     TextStyle {
-        font: asset_server.load("fonts/FiraSans-Bold.ttf"),
-        font_size: 64.0,
+        font: asset_server.load("digital7mono.ttf"),
+        font_size: 24.0,
         color: Color::rgb(1.0, 1.0, 1.0),
     }
 }
 
 pub fn get_final_score_text_style(asset_server: &Res<AssetServer>) -> TextStyle {
     TextStyle {
-        font: asset_server.load("fonts/FiraSans-Bold.ttf"),
-        font_size: 48.0,
+        font: asset_server.load("digital7mono.ttf"),
+        font_size: 20.0,
         color: Color::rgb(1.0, 1.0, 1.0),
     }
 }
 
 pub fn get_button_text_style(asset_server: &Res<AssetServer>) -> TextStyle {
     TextStyle {
-        font: asset_server.load("fonts/FiraSans-Bold.ttf"),
-        font_size: 32.0,
+        font: asset_server.load("digital7mono.ttf"),
+        font_size: 16.0,
         color: Color::rgb(1.0, 1.0, 1.0),
     }
 }

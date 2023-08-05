@@ -3,7 +3,7 @@ use bevy_prototype_lyon::prelude::*;
 use bevy::core_pipeline::clear_color::ClearColorConfig;
 
 use super::components::*;
-use crate::systems::BackgroundTranstion;
+use crate::{systems::BackgroundTranstion, game::object};
 
 const SQUARE_SIZE: f32 = 200.0;
 const N_OF_COLS: usize = 6;
@@ -20,6 +20,7 @@ pub fn player_interaction(
     mut object_query: Query<(&Transform,&mut Fill, &PuzzleColor), With<PuzzleColor>>,
     mut puzzle: ResMut<ColorPuzzle>,
     mut start_level_event_writer: EventWriter<StartLevelEvent>,
+    mut last_interraction_event_writer: EventWriter<LastInteractionEvent>,
     last_click_query: Query<Entity, With<LastClick>>,
 ) {
 
@@ -42,60 +43,24 @@ pub fn player_interaction(
         for last_click in last_click_query.iter() {
             commands.entity(last_click).despawn_recursive();
         }
-
-        let shape =  shapes::Rectangle {
-            extents: Vec2::new(
-                10.0,
-                10.0,
-            ),
-            origin: shapes::RectangleOrigin::BottomLeft,
-        };
-
-        commands
-            .spawn(( 
-                ShapeBundle {
-                    path: GeometryBuilder::build_as(&shape),
-                    transform: Transform::from_xyz(world_position.x, world_position.y , 1.0),
-                    ..default()
-                },
-                Fill::color(Color::RED),
-                LastClick,        
-            )
-        );
-        
-
+        let mut scored = false;
+        let mut colors = Vec::new();
         for (transform,mut fill, puzzle_color) in object_query.iter_mut() {
+            colors.push(puzzle_color.as_level_color());
             if mouse_hover(transform.translation, world_position, puzzle.shape_size) && puzzle_color.is_correct_color {
                 puzzle.increase_score();
-            } else if puzzle_color.is_correct_color {
-                fill.color = Color::WHITE;
-                commands
-                .spawn(( 
-                    ShapeBundle {
-                        path: GeometryBuilder::build_as(&shape),
-                        transform: Transform::from_xyz(transform.translation.x + puzzle.shape_size /2.0, transform.translation.y  + puzzle.shape_size /2.0 , 1.0),
-                        ..default()
-                    },
-                    Fill::color(Color::BLACK),
-                    LastClick,        
-                ));
-            } else {
-                fill.color = Color::BLACK;
-                commands
-                .spawn(( 
-                    ShapeBundle {
-                        path: GeometryBuilder::build_as(&shape),
-                        transform: Transform::from_xyz(transform.translation.x + puzzle.shape_size /2.0, transform.translation.y  + puzzle.shape_size /2.0 , 1.0),
-                        ..default()
-                    },
-                    Fill::color(Color::WHITE),
-                    LastClick,        
-                ));
+                scored = true;
             }
         
 
         }
 
+        last_interraction_event_writer.send(LastInteractionEvent::new(
+            world_position, 
+            puzzle.get_correct_color_index(),
+            colors,
+            scored,
+        ));
         start_level_event_writer.send(StartLevelEvent);    
 
             
@@ -103,6 +68,141 @@ pub fn player_interaction(
  
 }
 
+pub fn despawn_game_history(
+    mut commands: Commands,
+    mut object_query: Query<Entity, With<PuzzleColor>>,
+    mut last_click_query: Query<Entity, With<LastClick>>,    
+) {
+    for entity in object_query.iter_mut() {
+        commands.entity(entity).despawn_recursive();
+    }
+
+    for entity in last_click_query.iter_mut() {
+        commands.entity(entity).despawn_recursive();
+    }
+}
+
+pub fn render_game_history(
+    mut commands: Commands,
+    mut game_history: ResMut<GameHistory>,
+    mut puzzle: ResMut<ColorPuzzle>,
+    mut render_game_history_events: EventReader<RenderLevelHistoryEvent>,
+    mut object_query: Query<Entity, With<PuzzleColor>>,
+    mut last_click_query: Query<Entity, With<LastClick>>,
+    mut camera_query: Query<(&mut Camera2d, &mut BackgroundTranstion), With<Camera>>,
+) {
+
+    let render_event = render_game_history_events.iter().next();
+
+    if render_event.is_none() {
+        return;
+    }
+
+    let event = render_event.unwrap();
+
+    for entity in object_query.iter_mut() {
+        commands.entity(entity).despawn_recursive();
+    }
+
+    for entity in last_click_query.iter_mut() {
+        commands.entity(entity).despawn_recursive();
+    }
+
+    
+    let level_history = game_history.get_level_history(event.index);
+    let (mut camera, mut background_transition) = camera_query.single_mut();
+
+    background_transition.reset();
+    background_transition.set_end_color(Color::BLACK);
+    background_transition.set_start_color(level_history.get_correct_color());
+    background_transition.set_time(2.0);
+    camera.clear_color = ClearColorConfig::Custom(level_history.get_correct_color());
+
+
+    let shape =  shapes::Rectangle {
+        extents: Vec2::new(puzzle.shape_size, puzzle.shape_size),
+        origin: shapes::RectangleOrigin::BottomLeft,
+    };
+    let mut z = 0.0;
+    level_history.for_each_color(|index, color| {
+        let fill = Fill::color(color.color);
+        let is_correct_color = color.is_correct_color;
+        
+        commands
+            .spawn(( 
+                ShapeBundle {
+                    path: GeometryBuilder::build_as(&shape),
+                    transform: Transform::from_xyz(
+                        color.x,
+                        color.y,
+                        z
+                    ),
+                    ..default()
+                },
+                fill,
+                PuzzleColor { index, is_correct_color:  color.is_correct_color, x : color.x , y:  color.y, color: color.color.clone()},
+            )
+        );
+
+        if is_correct_color {
+            let inner_shape =  shapes::Rectangle {
+                extents: Vec2::new(puzzle.shape_size - 20.0, puzzle.shape_size - 20.0),
+                origin: shapes::RectangleOrigin::BottomLeft,
+            };
+            commands .spawn(( 
+                ShapeBundle {
+                    path: GeometryBuilder::build_as(&inner_shape),
+                    transform: Transform::from_xyz(
+                        color.x + 10.0,
+                        color.y + 10.0,
+                        z + 0.01
+                    ),
+                    ..default()
+                },
+                Fill::color(Color::WHITE),
+                LastClick,
+            ));
+        }
+        z += 0.1;
+    });
+
+    let shape_clicked_position =  shapes::Rectangle {
+        extents: Vec2::new(30.0, 30.0),
+        origin: shapes::RectangleOrigin::BottomLeft,
+    };
+
+    commands .spawn(( 
+        ShapeBundle {
+            path: GeometryBuilder::build_as(&shape_clicked_position),
+            transform: Transform::from_xyz(
+                level_history.clicked_position.x,
+                level_history.clicked_position.y,
+                1.0
+            ),
+            ..default()
+        },
+        Fill::color(Color::RED),
+        LastClick,
+    ));
+}
+
+pub fn store_last_interaction_state(
+    mut commands: Commands,
+    mut last_interaction_events: EventReader<LastInteractionEvent>,
+    mut game_history: ResMut<GameHistory>,
+) {
+    let level_history =last_interaction_events.iter().next();
+
+    if level_history.is_none() {
+        return;
+    }
+
+    let event = level_history.unwrap();
+
+    game_history.add_level(event.level_history());
+    
+
+}
 
 fn mouse_hover(translation: Vec3, delta: Vec2, shape_size : f32) -> bool {
     let x1 = translation.x;
@@ -126,6 +226,18 @@ fn random_range(min: f32, max: f32) -> f32 {
 #[derive(Resource, Reflect, Debug)]
 pub struct GameTimer {
     pub timer: Timer,
+}
+
+impl Default for GameTimer {
+    fn default() -> Self {
+        let mut timer = GameTimer {
+            timer: Timer::from_seconds(1.0, TimerMode::Once),
+        };
+
+        timer.timer.pause();
+
+        timer
+    }
 }
 
 
@@ -214,6 +326,7 @@ pub fn spawn_objects(
     mut score_query: Query<Entity, With<ScoreText>>,
     mut puzzle: ResMut<ColorPuzzle>,
     mut camera_query: Query<(&mut Camera2d, &mut BackgroundTranstion), With<Camera>>,
+    mut last_click_query: Query<Entity, With<LastClick>>,
     mut start_level_events: EventReader<StartLevelEvent>,
     asset_server: Res<AssetServer>,
 ) {
@@ -227,6 +340,10 @@ pub fn spawn_objects(
     }
 
     for entity in score_query.iter_mut() {
+        commands.entity(entity).despawn();        
+    }
+
+    for entity in last_click_query.iter_mut() {
         commands.entity(entity).despawn();        
     }
 
@@ -278,8 +395,8 @@ pub fn spawn_objects(
             n_of_rows += 1;
         }
 
-        let mut x = random_range((puzzle.get_width() / 2.0 ) * -1.0 , puzzle.get_width()  / 2.0 );
-        let mut y = random_range((puzzle.get_height()  / 2.0 ) * -1.0 , puzzle.get_height()  / 2.0 );    
+        let mut x = random_range(((puzzle.get_width() - puzzle.shape_size) / 2.0 ) * -1.0 , (puzzle.get_width()  - puzzle.shape_size)  / 2.0 );
+        let mut y = random_range(((puzzle.get_height() - puzzle.shape_size)  / 2.0 ) * -1.0 , (puzzle.get_height() - puzzle.shape_size)  / 2.0 );    
         let mut exists = used_spaces.iter().any(|(start_x, start_y, end_x, end_y)| {
             cord_is_intersecting(
                 x, y, x + puzzle.shape_size, y + puzzle.shape_size,
@@ -289,8 +406,8 @@ pub fn spawn_objects(
 
         let mut max_tries = 100;
         while exists && max_tries > 0 {
-            x = random_range((puzzle.get_width()  / 2.0 ) * -1.0 , puzzle.get_width()  / 2.0 );
-            y = random_range((puzzle.get_height()  / 2.0 ) * -1.0 , puzzle.get_height()  / 2.0 );    
+            x = random_range(((puzzle.get_width() - puzzle.shape_size) / 2.0 ) * -1.0 , (puzzle.get_width()  - puzzle.shape_size)  / 2.0 );
+            y = random_range(((puzzle.get_height() - puzzle.shape_size)  / 2.0 ) * -1.0 , (puzzle.get_height() - puzzle.shape_size)  / 2.0 );    
 
             exists = used_spaces.iter().any(|(start_x, start_y, end_x, end_y)| {
                 cord_is_intersecting(
@@ -311,7 +428,7 @@ pub fn spawn_objects(
                     ..default()
                 },
                 Fill::color(color),
-                PuzzleColor { index, is_correct_color},
+                PuzzleColor { index, is_correct_color, x , y, color: color.clone()},
                 
             )
         );
@@ -325,6 +442,7 @@ pub fn start_puzzle_level(
     mut commands: Commands,
     mut start_level_event_writer: EventWriter<StartLevelEvent>,
     mut puzzle: ResMut<ColorPuzzle>,
+    mut game_timer: ResMut<GameTimer>,
     window_query: Query<&Window, With<Window>>
 ) {
     commands.insert_resource(GameTimer { timer: puzzle.setup_timer()});
@@ -333,6 +451,10 @@ pub fn start_puzzle_level(
     let window = window_query.single();
     puzzle.set_window_size(window.width(), window.height());
     
+
+    if puzzle.get_score() == 0 {
+        game_timer.timer = puzzle.setup_timer();
+    }
 }
 
 

@@ -20,6 +20,7 @@ impl Plugin for GameOverMenuPlugin {
                 (
                     interact_with_restart_button,
                     interact_with_main_menu_button,
+                    interact_with_level_history_option,
                     interact_with_quit_button,
                     update_final_score_text,
                 )

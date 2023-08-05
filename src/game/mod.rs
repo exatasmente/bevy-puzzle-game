@@ -1,10 +1,12 @@
 
 pub mod object;
 pub mod puzzle;
+pub mod ui;
 mod systems;
 
 use puzzle::PuzzlePlugin;
 use object::ObjectPlugin;
+use ui::GameUIPlugin;
 
 use bevy::prelude::*;
 
@@ -19,6 +21,7 @@ impl Plugin for GamePlugin {
             // Events
             .add_event::<GameOver>()
             .add_plugin(ObjectPlugin)
+            .add_plugin(GameUIPlugin)
             .add_plugin(PuzzlePlugin);
     }
 }

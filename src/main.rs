@@ -29,6 +29,7 @@ fn main() {
         // Systems
         .add_system(transition_to_game_state)
         .add_system(transition_to_main_menu_state)
+        .add_system(transition_to_game_over_state)
         .add_system(exit_game)
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
@@ -51,5 +52,7 @@ pub enum AppState {
     #[default]
     MainMenu,
     Game,
+    Paused,
+    History,
     GameOver,
 }
