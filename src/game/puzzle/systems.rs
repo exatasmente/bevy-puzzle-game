@@ -17,7 +17,7 @@ pub fn player_interaction(
     camera_q: Query<(&Camera, &GlobalTransform, &BackgroundTranstion)>,
     event_click  : Res<Input<MouseButton>>,
     touches: Res<Touches>,
-    object_query: Query<(&Transform, &PuzzleColor), With<PuzzleColor>>,
+    object_query: Query<(&Transform,&mut Fill, &PuzzleColor), With<PuzzleColor>>,
     mut puzzle: ResMut<ColorPuzzle>,
     mut start_level_event_writer: EventWriter<StartLevelEvent>,
     last_click_query: Query<Entity, With<LastClick>>,
@@ -62,11 +62,24 @@ pub fn player_interaction(
                 LastClick,        
             )
         );
+        
 
-        for (transform, puzzle_color) in object_query.iter() {
-            if mouse_hover(transform.translation, world_position, puzzle.shape_size) && puzzle.is_correct_color(puzzle_color.index) {
+        for (transform,mut fill, puzzle_color) in object_query.iter() {
+            if mouse_hover(transform.translation, world_position, puzzle.shape_size) && puzzle_color.is_correct_color {
                 puzzle.increase_score();
-                break;
+            } else if puzzle_color.is_correct_color {
+                commands
+                .spawn(( 
+                    ShapeBundle {
+                        path: GeometryBuilder::build_as(&shape),
+                        transform: Transform::from_xyz((transform.translation.x + puzzle.shape_size) / 2.0, (transform.translation.y  + puzzle.shape_size) / 2.0 , 1.0),
+                        ..default()
+                    },
+                    Fill::color(Color::BLUE),
+                    LastClick,        
+                )
+            );
+            
             }
         }
 
@@ -107,7 +120,6 @@ pub struct GameTimer {
 pub fn background_transition(
     mut commands: Commands,
     mut camera_query: Query<(&mut Camera2d, &mut BackgroundTranstion), With<Camera>>,
-    mut puzzle: ResMut<ColorPuzzle>,
     time : Res<Time>,
     mut game_timer: ResMut<GameTimer>,
 ) {
@@ -206,17 +218,11 @@ pub fn spawn_objects(
     }
 
     let font = asset_server.load("digital7mono.ttf");
-    let mut puzzle_color = puzzle.get_color().clone();
-
-    puzzle_color.set_r(puzzle_color.r() * -1.0);
-    puzzle_color.set_g(puzzle_color.g() * -1.0);
-    puzzle_color.set_b(puzzle_color.b() * -1.0);
-
-
+    
     let text_style = TextStyle {
         font: font.clone(),
         font_size: 20.0,
-        color: puzzle_color,
+        color: Color::BLACK,
         
     };
     let text_alignment = TextAlignment::Center;
@@ -245,7 +251,7 @@ pub fn spawn_objects(
 
     let mut used_spaces = Vec::new();
     let mut z = 0.0;
-    puzzle.for_each_color( |index,color| {
+    puzzle.for_each_color( |index,color, is_correct_color| {
         
         let shape =  shapes::Rectangle {
             extents: Vec2::new(
@@ -292,7 +298,7 @@ pub fn spawn_objects(
                     ..default()
                 },
                 Fill::color(color),
-                PuzzleColor { index },
+                PuzzleColor { index, is_correct_color},
                 
             )
         );

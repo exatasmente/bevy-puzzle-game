@@ -3,7 +3,8 @@ use rand::prelude::*;
 
 #[derive(Component)]
 pub struct PuzzleColor {
-    pub index : usize
+    pub index : usize,
+    pub is_correct_color : bool,
 }
 
 
@@ -140,7 +141,7 @@ impl ColorPuzzle {
 
     pub fn is_correct_color(&self, index : usize) -> bool {
         let color = self.current_colors[index];
-        color.r() == self.get_color().r() && color.g() == self.get_color().g() && color.b() == self.get_color().b()
+        color.r() == self.get_color().r() && color.g() == self.get_color().g() && color.b() == self.get_color().b() && color.a() == self.get_color().a()
     }
 
     pub fn setup_timer(&mut self) -> Timer{
@@ -149,10 +150,10 @@ impl ColorPuzzle {
 
     pub fn for_each_color<F>(&self, mut f: F)
     where
-        F: FnMut(usize, Color),
+        F: FnMut(usize, Color, bool),
     {
         for (index, color) in self.current_colors.iter().enumerate() {
-            f(index, *color);
+            f(index, *color, self.is_correct_color(index));
         }
     }
     
