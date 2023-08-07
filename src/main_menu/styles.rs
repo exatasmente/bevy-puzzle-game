@@ -30,14 +30,14 @@ pub const TITLE_STYLE: Style = Style {
     flex_direction: FlexDirection::Row,
     justify_content: JustifyContent::Center,
     align_items: AlignItems::Center,
-    size: Size::new(Val::Px(300.0), Val::Px(120.0)),
+    size: Size::new(Val::Percent(40.0), Val::Px(120.0)),
     ..Style::DEFAULT
 };
 
 pub fn get_title_text_style(asset_server: &Res<AssetServer>) -> TextStyle {
     TextStyle {
         font: asset_server.load("digital7mono.ttf"),
-        font_size: 64.0,
+        font_size: 32.0,
         color: Color::WHITE,
     }
 }
@@ -45,7 +45,7 @@ pub fn get_title_text_style(asset_server: &Res<AssetServer>) -> TextStyle {
 pub fn get_button_text_style(asset_server: &Res<AssetServer>) -> TextStyle {
     TextStyle {
         font: asset_server.load("digital7mono.ttf"),
-        font_size: 32.0,
+        font_size: 14.0,
         color: Color::WHITE,
     }
 }

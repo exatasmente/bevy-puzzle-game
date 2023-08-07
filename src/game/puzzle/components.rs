@@ -1,4 +1,5 @@
 use bevy::{prelude::*, reflect::erased_serde::__private::serde::__private::de};
+use bevy_utils::Duration;
 use rand::prelude::*;
 
 #[derive(Component)]
@@ -45,11 +46,25 @@ pub struct NewGameEvent {
 
 pub struct StartLevelEvent;
 
-#[derive(Debug, Reflect)]
+#[derive(Debug, Reflect, PartialEq, Eq, Clone, Copy)]
 pub enum GameMode {
     Infinite,
     AgainstTheClock,
     TimeTrial,
+}
+
+impl GameMode {
+    pub fn iter() -> impl Iterator<Item = GameMode> {
+        [GameMode::Infinite, GameMode::AgainstTheClock, GameMode::TimeTrial].iter().copied()
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            GameMode::Infinite => "Infinto",
+            GameMode::AgainstTheClock => "Conta o Tempo",
+            GameMode::TimeTrial => "Soma de Tempo",
+        }
+    }
 }
 
 
@@ -88,13 +103,15 @@ pub fn score_to_increase_difficulty_formula(score: usize) -> usize {
         _ => 7,
     }
 }
+
+
 impl ColorPuzzle {
    pub  fn new() -> Self {
         let mut puzzle =  Self {
             score: 0,
             current_colors: vec![],
             correct_color_index: 0,
-            game_mode: GameMode::Infinite,
+            game_mode: GameMode::TimeTrial,
             difficulty: 1,
             objects_per_difficulty: 2,
             seconds_added_per_success: 3.0,
@@ -106,9 +123,36 @@ impl ColorPuzzle {
             screen_padding : 50.0,
         };
 
+        puzzle.setup(&GameMode::TimeTrial);
+
         puzzle.generate_colors();
 
         puzzle
+    }
+
+    pub fn setup(&mut self, game_mode: &GameMode) {
+        self.reset();
+
+        match game_mode {
+            GameMode::Infinite => {
+                self.start_seconds = 0.0;
+                self.transition_seconds = 1.0;
+                self.game_mode = GameMode::Infinite;
+            },
+            GameMode::AgainstTheClock => {
+                self.start_seconds = 60.0;
+                self.transition_seconds = 1.0;
+                self.game_mode = GameMode::AgainstTheClock;
+            },
+            GameMode::TimeTrial => {
+                self.start_seconds = 30.0;
+                self.transition_seconds = 1.0;
+                self.seconds_added_per_success = 3.0;
+                self.game_mode = GameMode::TimeTrial;
+            },
+        }
+   
+        
     }
 
     pub fn set_window_size(&mut self, width: f32, height: f32) {
@@ -185,8 +229,21 @@ impl ColorPuzzle {
         self.score
     }
 
-    pub fn increase_score(&mut self) {
+    pub fn increase_score(&mut self, game_timer : &mut GameTimer) {
         self.score += 1;
+
+        match self.game_mode {
+            GameMode::TimeTrial => {
+                let remaining_time = game_timer.timer.duration().as_secs_f32();
+                let new_duration = remaining_time + self.get_seconds_added_per_success();
+                game_timer.timer.set_duration(Duration::from_secs_f32(new_duration));
+            },
+            _ => {}
+        }
+    }
+
+    pub fn get_seconds_added_per_success(&self) -> f32 {
+        self.seconds_added_per_success
     }
 
     pub fn set_score(&mut self, score : usize) {
@@ -198,7 +255,7 @@ impl ColorPuzzle {
         color.r() == self.get_color().r() && color.g() == self.get_color().g() && color.b() == self.get_color().b() && color.a() == self.get_color().a()
     }
 
-    pub fn setup_timer(&mut self) -> Timer{
+    pub fn setup_timer(&mut self) -> Timer {
         Timer::from_seconds(self.start_seconds, TimerMode::Once)
     }
 

@@ -3,7 +3,7 @@ use bevy_prototype_lyon::prelude::*;
 use bevy::core_pipeline::clear_color::ClearColorConfig;
 
 use super::components::*;
-use crate::{systems::BackgroundTranstion, game};
+use crate::{systems::BackgroundTranstion, game, events};
 const SQUARE_SIZE: f32 = 200.0;
 const N_OF_COLS: usize = 6;
 
@@ -18,6 +18,7 @@ pub fn player_interaction(
     touches: Res<Touches>,
     mut object_query: Query<(&Transform,&mut Fill, &PuzzleColor), With<PuzzleColor>>,
     mut puzzle: ResMut<ColorPuzzle>,
+    mut game_timer: ResMut<GameTimer>,
     mut start_level_event_writer: EventWriter<StartLevelEvent>,
     mut last_interraction_event_writer: EventWriter<LastInteractionEvent>,
     last_click_query: Query<Entity, With<LastClick>>,
@@ -47,7 +48,8 @@ pub fn player_interaction(
         for (transform,mut fill, puzzle_color) in object_query.iter_mut() {
             colors.push(puzzle_color.as_level_color());
             if mouse_hover(transform.translation, world_position, puzzle.shape_size) && puzzle_color.is_correct_color {
-                puzzle.increase_score();
+                puzzle.increase_score(&mut game_timer);
+
                 scored = true;
             }
         
@@ -260,7 +262,12 @@ pub fn render_remaining_time(
     time : Res<Time>,
 ) {
 
+    if puzzle.game_mode == GameMode::Infinite {
+        return;
+    }
+
     game_timer.timer.tick(time.delta());
+    
     
     if query.iter_mut().next().is_none() {
         let font = asset_server.load("digital7mono.ttf");
@@ -278,6 +285,7 @@ pub fn render_remaining_time(
                 ..default()
             },
             RemainingTime,
+            PuzzleColorGame {},
         ));
 
         return;
@@ -348,6 +356,7 @@ pub fn spawn_objects(
             ..default()
         },
         ScoreText,
+        PuzzleColorGame {},
     ));
 
     let current_color = puzzle.get_color();
@@ -413,6 +422,7 @@ pub fn spawn_objects(
                 },
                 Fill::color(color),
                 PuzzleColor { index, is_correct_color, x , y, color: color.clone()},
+                PuzzleColorGame {},
                 
             )
         );
@@ -460,12 +470,16 @@ pub fn handle_new_game_event(
     mut app_state_next_state: ResMut<NextState<crate::AppState>>,
     window_query: Query<&Window, With<Window>>
 ) {
+    let events = new_game_event_reader.iter().next();    
     
-    if new_game_event_reader.iter().next().is_none() {
+    if events.is_none() {
         return;
     }
 
+    let event = events.unwrap();
+
     let window = window_query.single();
+    puzzle.setup(&event.game_mode);
     puzzle.set_window_size(window.width(), window.height());
 
     puzzle.reset();
@@ -489,10 +503,12 @@ pub fn handle_new_game_event(
     
 }
 
+#[derive(Component)]
+pub struct PuzzleColorGame;
 
 pub fn despaw_objects(
     mut commands: Commands,
-    mut object_query: Query<Entity, With<PuzzleColor>>,
+    mut object_query: Query<Entity, With<PuzzleColorGame>>,
     mut puzzle: ResMut<ColorPuzzle>,
 ) {
 

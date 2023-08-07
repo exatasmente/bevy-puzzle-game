@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 
 use crate::main_menu::components::*;
+use crate::game::puzzle::components::GameMode;
 use crate::main_menu::styles::*;
 
 pub fn spawn_main_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
@@ -43,52 +44,30 @@ pub fn build_main_menu(commands: &mut Commands, asset_server: &Res<AssetServer>)
                         ..default()
                     });
                 });
-            // === Play Button ===
-            parent
-                .spawn((
-                    ButtonBundle {
-                        style: BUTTON_STYLE,
-                        background_color: NORMAL_BUTTON_COLOR.into(),
-                        ..default()
-                    },
-                    PlayButton {},
-                ))
-                .with_children(|parent| {
-                    parent.spawn(TextBundle {
-                        text: Text {
-                            sections: vec![TextSection::new(
-                                "Jogar",
-                                get_button_text_style(&asset_server),
-                            )],
-                            alignment: TextAlignment::Center,
+            for game_mode in GameMode::iter() {
+                parent
+                    .spawn((
+                        ButtonBundle {
+                            style: BUTTON_STYLE,
+                            background_color: NORMAL_BUTTON_COLOR.into(),
                             ..default()
                         },
-                        ..default()
-                    });
-                });
-            // === Quit Button ===
-            parent
-                .spawn((
-                    ButtonBundle {
-                        style: BUTTON_STYLE,
-                        background_color: NORMAL_BUTTON_COLOR.into(),
-                        ..default()
-                    },
-                    QuitButton {},
-                ))
-                .with_children(|parent| {
-                    parent.spawn(TextBundle {
-                        text: Text {
-                            sections: vec![TextSection::new(
-                                "Sair",
-                                get_button_text_style(&asset_server),
-                            )],
-                            alignment: TextAlignment::Center,
+                        PlayButton { game_mode },
+                    ))
+                    .with_children(|parent| {
+                        parent.spawn(TextBundle {
+                            text: Text {
+                                sections: vec![TextSection::new(
+                                    format!("Jogar Modo {}", game_mode.as_str()),
+                                    get_button_text_style(&asset_server),
+                                )],
+                                alignment: TextAlignment::Center,
+                                ..default()
+                            },
                             ..default()
-                        },
-                        ..default()
+                        });
                     });
-                });
+            }
         })
         .id();
 
