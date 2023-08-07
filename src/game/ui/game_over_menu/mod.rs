@@ -10,7 +10,7 @@ use crate::AppState;
 use bevy::prelude::*;
 use crate::game::ui::game_over_menu::systems::Pagination;
 pub struct GameOverMenuPlugin;
-
+pub struct SpawnPaginationEvent;
 
 
 impl Plugin for GameOverMenuPlugin {
@@ -23,11 +23,12 @@ impl Plugin for GameOverMenuPlugin {
                     interact_with_level_history_option,
                     interact_with_continue_button,
                     interact_with_pagination_button,
-                    update_final_score_text,
+                    spawn_pagination_itens,
                 )
                     .in_set(OnUpdate(AppState::GameOver)),
             )
             .init_resource::<Pagination>()
+            .add_event::<SpawnPaginationEvent>()
             // // OnExit State Systems
             .add_system(despawn_game_over_menu.in_schedule(OnExit(AppState::GameOver)));
     }

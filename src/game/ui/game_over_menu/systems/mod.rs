@@ -11,6 +11,7 @@ pub struct Pagination {
     pub current_page: usize,
     pub max_page: usize,
     pub items_per_page: usize,
+    pub entity: Option<bevy::prelude::Entity>,
 }
 
 impl Default for Pagination {
@@ -19,6 +20,7 @@ impl Default for Pagination {
             current_page: 0,
             max_page: 0,
             items_per_page: 5,
+            entity: None,
         }
     }
     
@@ -30,6 +32,7 @@ impl Pagination {
             current_page: 0,
             max_page,
             items_per_page: 5,
+            entity: None,
         }
     }
 
@@ -72,4 +75,15 @@ impl Pagination {
         self.items_per_page
     }
     
+    pub fn set_entity(&mut self, entity: bevy::prelude::Entity) {
+        self.entity = Some(entity);
+    }
+
+    pub fn get_entity(&self) -> Option<bevy::prelude::Entity> {
+        self.entity
+    }
+
+    pub fn clear_entity(&mut self) {
+        self.entity = None;
+    }
 }

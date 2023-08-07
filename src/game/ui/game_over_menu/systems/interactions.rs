@@ -8,6 +8,7 @@ use crate::game::puzzle::components::GameMode;
 use crate::game::puzzle::components::NewGameEvent;
 use crate::game::ui::game_over_menu::components::*;
 use crate::game::ui::game_over_menu::styles::*;
+use crate::game::ui::game_over_menu::SpawnPaginationEvent;
 use crate::AppState;
 pub fn interact_with_level_history_option(
     mut button_query: Query<(&Interaction, &LevelHistoryOption),(Changed<Interaction>, With<LevelHistoryOption>)>,
@@ -30,16 +31,23 @@ pub fn interact_with_level_history_option(
 }
 
 pub fn interact_with_pagination_button(
+    mut commands: Commands,
     mut button_query: Query<(&Interaction, &PaginationOption),(Changed<Interaction>, With<PaginationOption>)>,
-    mut app_state_next_state: ResMut<NextState<AppState>>,
+    mut spawn_pagination_event_writer: EventWriter<SpawnPaginationEvent>,
     mut pagination: ResMut<Pagination>,
 ) {
+
+    if button_query.iter_mut().count() == 0 {
+        return;
+    }
+
+    
 
     for (interaction, pagination_button) in button_query.iter_mut() {
         match *interaction {
             Interaction::Clicked => {
                 pagination.set_page(pagination_button.index);
-                app_state_next_state.set(AppState::GameOver);
+                spawn_pagination_event_writer.send(SpawnPaginationEvent);
             }, 
             _ => {}
         }

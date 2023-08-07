@@ -34,6 +34,8 @@ fn main() {
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "PUZZLE".into(),
+                canvas : Some("canvas".into()),
+                prevent_default_event_handling: false,
                 ..default()
             }),
             ..default()
