@@ -134,7 +134,6 @@ fn build_pagination_element(
     parent
     .spawn(NodeBundle {
         style: PAGINATION_CONTAINER_STYLE,
-        background_color: BACKGROUND_COLOR.into(),
         ..default()
     })
     .with_children(|parent| {
