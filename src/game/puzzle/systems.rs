@@ -442,13 +442,51 @@ pub fn start_puzzle_level(
         game_timer.timer = puzzle.setup_timer();
     }
 
-
     if game_timer.timer.paused() {
         game_timer.timer.unpause();
     }
 
     start_level_event_writer.send(StartLevelEvent);    
 
+}
+
+pub fn handle_new_game_event(
+    mut commands: Commands,
+    mut new_game_event_reader: EventReader<NewGameEvent>,
+    mut puzzle: ResMut<ColorPuzzle>,
+    mut game_timer: ResMut<GameTimer>,
+    mut game_history: ResMut<GameHistory>,
+    mut start_level_event_writer: EventWriter<StartLevelEvent>,
+    mut app_state_next_state: ResMut<NextState<crate::AppState>>,
+    window_query: Query<&Window, With<Window>>
+) {
+    
+    if new_game_event_reader.iter().next().is_none() {
+        return;
+    }
+
+    let window = window_query.single();
+    puzzle.set_window_size(window.width(), window.height());
+
+    puzzle.reset();
+
+    if game_timer.timer.duration().as_secs_f32() != puzzle.start_seconds {
+        game_timer.timer = puzzle.setup_timer();
+    } else if game_timer.timer.finished() {
+        game_timer.timer = puzzle.setup_timer();
+    }
+
+    if game_timer.timer.paused() {
+        game_timer.timer.unpause();
+    }
+
+    game_history.reset();
+
+    app_state_next_state.set(crate::AppState::Game);
+    start_level_event_writer.send(StartLevelEvent);   
+
+
+    
 }
 
 

@@ -3,6 +3,9 @@ use bevy::prelude::*;
 
 use super::Pagination;
 use crate::game::puzzle::components::RenderLevelHistoryEvent;
+use crate::game::puzzle::components::GameTimer;
+use crate::game::puzzle::components::GameMode;
+use crate::game::puzzle::components::NewGameEvent;
 use crate::game::ui::game_over_menu::components::*;
 use crate::game::ui::game_over_menu::styles::*;
 use crate::AppState;
@@ -44,18 +47,28 @@ pub fn interact_with_pagination_button(
 
 }
 
+
 pub fn interact_with_continue_button(
     mut button_query: Query<
         (&Interaction, &mut BackgroundColor),
         (Changed<Interaction>, With<ContinueButton>),
     >,
     mut app_state_next_state: ResMut<NextState<AppState>>,
+    mut new_game_event_writer: EventWriter<NewGameEvent>,
+    game_timer : Res<GameTimer>,
 ) {
     for (interaction, mut color) in button_query.iter_mut() {
         match *interaction {
             Interaction::Clicked => {
                 *color = PRESSED_BUTTON.into();
-                app_state_next_state.set(AppState::Game);
+                if game_timer.timer.finished() {
+                    new_game_event_writer.send(NewGameEvent {
+                        game_mode : GameMode::TimeTrial,
+                    });
+                } else {
+                    app_state_next_state.set(AppState::Game);
+                }
+
             }
             Interaction::Hovered => {
                 *color = HOVERED_BUTTON.into();

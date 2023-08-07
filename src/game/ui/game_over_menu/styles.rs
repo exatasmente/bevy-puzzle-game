@@ -46,7 +46,7 @@ pub const PAGINATION_CONTAINER_STYLE: Style = Style {
 };
 
 pub const BUTTON_PAGINATION_STYLE: Style = Style {
-    size: Size::new(Val::Px(40.0), Val::Px(40.0)),
+    size: Size::new(Val::Percent(6.0), Val::Percent(90.0)),
     display: Display::Flex,
     flex_direction: FlexDirection::Column,
     margin: UiRect::all(Val::Px(4.0)),

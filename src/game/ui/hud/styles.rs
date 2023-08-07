@@ -3,7 +3,7 @@ use bevy::prelude::*;
 pub const NORMAL_BUTTON: Color = Color::rgb(0.15, 0.15, 0.15);
 
 pub const BUTTON_STYLE: Style = Style {
-    size: Size::new(Val::Px(60.), Val::Px(40.0)),
+    size: Size::new(Val::Percent(10.), Val::Percent(5.)),
     margin: UiRect::all(Val::Px(10.0)),
     justify_content: JustifyContent::Center,
     align_items: AlignItems::Center,

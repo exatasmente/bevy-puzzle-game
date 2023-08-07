@@ -38,6 +38,10 @@ pub struct RenderLevelHistoryEvent {
     pub index: usize,
 }
 
+pub struct NewGameEvent {
+    pub game_mode: GameMode,
+}
+
 
 pub struct StartLevelEvent;
 
@@ -77,7 +81,7 @@ impl Default for ColorPuzzle {
 pub fn score_to_increase_difficulty_formula(score: usize) -> usize {
     match score {
         0..=5 => 2,
-        5..=10 => 3,
+        6..=10 => 3,
         11..=30 => 4,
         31..=50 => 5,
         51..=60 => 6,
@@ -96,7 +100,7 @@ impl ColorPuzzle {
             seconds_added_per_success: 3.0,
             shape_size: 200.0,
             start_seconds: 60.0,
-            transition_seconds: 1.2,
+            transition_seconds: 1.,
             width: 800.0,
             height: 600.0,
             screen_padding : 50.0,
@@ -189,6 +193,10 @@ impl ColorPuzzle {
 
     pub fn setup_timer(&mut self) -> Timer{
         Timer::from_seconds(self.start_seconds, TimerMode::Once)
+    }
+
+    pub fn reset(&mut self) {
+        self.score = 0;
     }
 
     pub fn for_each_color<F>(&self, mut f: F)
@@ -315,6 +323,14 @@ impl GameHistory {
     
     pub fn get_level_history(&mut self, index : usize) -> &LevelHistory {
         self.levels.get(index).unwrap()
+    }
+
+    pub fn reset(&mut self) {
+        self.levels_played = 0;
+        self.total_score = 0;
+        self.current_streak = 0;
+        self.max_streak = 0;
+        self.levels = vec![];
     }
 
 }
