@@ -46,7 +46,7 @@ pub const PAGINATION_CONTAINER_STYLE: Style = Style {
 };
 
 pub const BUTTON_PAGINATION_STYLE: Style = Style {
-    size: Size::new(Val::Percent(6.0), Val::Percent(90.0)),
+    size: Size::new(Val::Percent(6.0), Val::Percent(60.0)),
     display: Display::Flex,
     flex_direction: FlexDirection::Column,
     margin: UiRect::all(Val::Px(4.0)),
@@ -66,7 +66,7 @@ pub const PAGINATION_TEXT_STYLE: Style = Style {
 pub fn get_button_text_style(asset_server: &Res<AssetServer>) -> TextStyle {
     TextStyle {
         font: asset_server.load("digital7mono.ttf"),
-        font_size: 16.0,
+        font_size: 12.0,
         color: Color::rgb(1.0, 1.0, 1.0),
     }
 }

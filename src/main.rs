@@ -37,7 +37,7 @@ fn main() {
                 canvas : Some("canvas".into()),
                 prevent_default_event_handling: false,
                 fit_canvas_to_parent: true,
-                resizable: false,
+                resolution : (480., 600.).into(),
                 ..default()
             }),
             ..default()

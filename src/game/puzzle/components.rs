@@ -114,6 +114,13 @@ impl ColorPuzzle {
     pub fn set_window_size(&mut self, width: f32, height: f32) {
         self.width = width;
         self.height = height;
+
+
+        self.shape_size = if width / 4.0 > 200.0 {
+            200.0
+        } else {
+            width / 4.0
+        };
     }
 
     pub fn get_width(&self) -> f32 {
