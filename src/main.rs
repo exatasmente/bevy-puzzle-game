@@ -36,6 +36,8 @@ fn main() {
                 title: "PUZZLE".into(),
                 canvas : Some("canvas".into()),
                 prevent_default_event_handling: false,
+                fit_canvas_to_parent: true,
+                resizable: false,
                 ..default()
             }),
             ..default()
