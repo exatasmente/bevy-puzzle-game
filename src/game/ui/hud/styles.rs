@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 
 pub const NORMAL_BUTTON: Color = Color::rgb(0.15, 0.15, 0.15);
+pub const TRANSPARENT_BUTTON: Color = Color::rgba(0.0, 0.0, 0.0, 0.0);
 
 pub const BUTTON_STYLE: Style = Style {
     size: Size::new(Val::Px(150.), Val::Px(60.0)),

@@ -12,7 +12,7 @@ pub fn build_hud(commands: &mut Commands, asset_server: &Res<AssetServer>) -> En
         .spawn((
             ButtonBundle {
                 style: BUTTON_STYLE,
-                background_color: NORMAL_BUTTON.into(),
+                background_color: TRANSPARENT_BUTTON.into(),
                 ..default()
             },
             HistoryButtom,
@@ -22,7 +22,7 @@ pub fn build_hud(commands: &mut Commands, asset_server: &Res<AssetServer>) -> En
             parent.spawn(TextBundle {
                 text: Text {
                     sections: vec![TextSection::new(
-                        "Pause",
+                        "||",
                         get_text_style(&asset_server),
                     )],
                     alignment: TextAlignment::Center,
