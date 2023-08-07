@@ -8,7 +8,7 @@ use systems::updates::*;
 
 use crate::AppState;
 use bevy::prelude::*;
-use crate::game::ui::game_over_menu::systems::Pagination;
+use crate::Pagination;
 pub struct GameOverMenuPlugin;
 pub struct SpawnPaginationEvent;
 

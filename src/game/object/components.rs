@@ -10,29 +10,7 @@ pub struct Object {
 }
 
 impl Object {
-    pub fn new(velocity : f32, direction : Vec2 ) -> Self {
-        Self {
-            velocity,
-            direction,
-        }
-    }
-
-    pub fn get_velocity(&self) -> f32 {
-        self.velocity
-    }
-
-    pub fn set_velocity(&mut self, velocity : f32) {
-        self.velocity = velocity;
-    }
-
-    pub fn get_direction(&self) -> Vec2 {
-        self.direction
-    }
-
-    pub fn set_direction(&mut self, direction : Vec2) {
-        self.direction = direction;
-    }
-
+   
     pub fn generate_movement_vector(&self) -> Vec2 {
         let mut movement_vector = Vec2::new(0.0, 0.0);
         

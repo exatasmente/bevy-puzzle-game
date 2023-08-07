@@ -1,10 +1,9 @@
 use bevy::prelude::*;
 
-use crate::game::puzzle;
 use crate::game::puzzle::components::GameHistory;
 use crate::game::ui::game_over_menu::components::*;
 use crate::game::ui::game_over_menu::styles::*;
-use crate::game::ui::game_over_menu::systems::Pagination;
+use crate::pagination::Pagination;
 use crate::game::puzzle::components::GameTimer;
 use crate::game::ui::game_over_menu::SpawnPaginationEvent;
 
@@ -68,7 +67,7 @@ pub fn build_back_button(
 ) {
 
     let text = if game_timer.timer.finished() {
-        "Restart"
+        "Menu"
     } else {
         "Continue"
     };
@@ -101,38 +100,82 @@ pub fn build_back_button(
 fn build_pagination_element(
     asset_server: &Res<AssetServer>,
     parent : &mut ChildBuilder,
-    mut pagination: &mut ResMut<Pagination>,
+    pagination: &mut ResMut<Pagination>,
 ) {
+
+    if pagination.max_page == 0 {
+        return;
+    }
+
     parent
     .spawn(NodeBundle {
         style: PAGINATION_CONTAINER_STYLE,
         ..default()
     })
     .with_children(|parent| {
-        for index in 0..pagination.max_page {
-            parent
-                .spawn((
-                    ButtonBundle {
-                        style: BUTTON_PAGINATION_STYLE,
-                        background_color: NORMAL_BUTTON.into(),
+        let list = vec!["<", ">"];
+
+
+        parent
+        .spawn((
+            ButtonBundle {
+                style: BUTTON_PAGINATION_STYLE,
+                background_color: TRANSPARENT_BUTTON.into(),
+                ..default()
+            },
+            PaginationOption { index : if pagination.current_page > 0 { pagination.current_page - 1} else { 0 }}
+        ))
+        .with_children(|parent| {
+            parent.spawn(TextBundle {
+                style: PAGINATION_TEXT_STYLE,
+                text: Text {
+                    sections: vec![TextSection::new(
+                        format!("{}", list[0]),
+                        get_pagination_button_text_style(&asset_server),
+                    )],
+                    alignment: TextAlignment::Center,
+                    ..default()
+                },
+                ..default()
+            });
+        });
+        parent.spawn(TextBundle {
+            style: PAGINATION_TEXT_STYLE,
+            text: Text {
+                sections: vec![TextSection::new(
+                    format!("Pagina {} de {}", pagination.current_page + 1, pagination.max_page),
+                    get_button_text_style(&asset_server),
+                )],
+                alignment: TextAlignment::Center,
+                ..default()
+            },
+            ..default()
+        });
+
+    
+        parent
+            .spawn((
+                ButtonBundle {
+                    style: BUTTON_PAGINATION_STYLE,
+                    background_color: TRANSPARENT_BUTTON.into(),
+                    ..default()
+                },
+                PaginationOption { index : if pagination.current_page + 1 < pagination.max_page { pagination.current_page + 1} else { pagination.current_page }}
+            ))
+            .with_children(|parent| {
+                parent.spawn(TextBundle {
+                    style: PAGINATION_TEXT_STYLE,
+                    text: Text {
+                        sections: vec![TextSection::new(
+                            format!("{}", list[1]),
+                            get_pagination_button_text_style(&asset_server),
+                        )],
+                        alignment: TextAlignment::Center,
                         ..default()
                     },
-                    PaginationOption { index },
-                ))
-                .with_children(|parent| {
-                    parent.spawn(TextBundle {
-                        style: PAGINATION_TEXT_STYLE,
-                        text: Text {
-                            sections: vec![TextSection::new(
-                                format!("{}", index + 1),
-                                get_button_text_style(&asset_server),
-                            )],
-                            alignment: TextAlignment::Center,
-                            ..default()
-                        },
-                        ..default()
-                    });
+                    ..default()
                 });
-        }
+            });
+        
     });
 }

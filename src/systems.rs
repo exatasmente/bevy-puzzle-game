@@ -1,8 +1,5 @@
 use bevy::app::AppExit;
 use bevy::prelude::*;
-
-
-use crate::events::*;
 use crate::AppState;
 
 
@@ -69,14 +66,6 @@ impl BackgroundTranstion {
 
         color
     }
-
-    pub fn start_transition(&mut self, start_color: Color, end_color: Color, time: f32) {
-        self.start_color = start_color;
-        self.end_color = end_color;
-        self.time = time;
-        self.current_time = 0.0;
-    }
-
     pub fn update(&mut self, time: f32) {
         if self.is_in_transition() {
             self.current_time = if self.current_time + time > self.time {
@@ -105,9 +94,6 @@ impl BackgroundTranstion {
         self.time = time;
     }
 
-    pub fn set_current_time(&mut self, current_time: f32) {
-        self.current_time = current_time;
-    }
 }
 
 pub fn spawn_camera(
@@ -155,17 +141,6 @@ pub fn transition_to_game_over_state(
             app_state_next_state.set(AppState::GameOver);
             println!("Entered AppState::GameOver");
         }
-    }
-}
-
-pub fn handle_game_over(
-    mut game_over_event_reader: EventReader<GameOver>,
-    mut app_state_next_state: ResMut<NextState<AppState>>,
-) {
-    for event in game_over_event_reader.iter() {
-        println!("Your final score is: {}", event.score.to_string());
-        app_state_next_state.set(AppState::GameOver);
-        println!("Entered AppState::GameOver");
     }
 }
 

@@ -1,4 +1,4 @@
-use bevy::{prelude::*, reflect::erased_serde::__private::serde::__private::de};
+use bevy::prelude::*;
 use bevy_utils::Duration;
 use rand::prelude::*;
 
@@ -12,16 +12,6 @@ pub struct PuzzleColor {
 }
 
 impl PuzzleColor {
-    pub fn new(index : usize, is_correct_color : bool, color : Color, x : f32, y : f32) -> Self {
-        Self {
-            index,
-            is_correct_color,
-            color,
-            x,
-            y,
-        }
-    }
-
     pub fn as_level_color(&self) -> LevelColor {
         LevelColor {
             color : self.color,
@@ -179,14 +169,6 @@ impl ColorPuzzle {
         self.correct_color_index
     }
 
-    pub fn get_colors(&self) -> &Vec<Color> {
-        &self.current_colors
-    }
-
-    pub fn get_color_by_index(&self, index: usize) -> Color {
-        self.current_colors[index]
-    }
-
 
     pub fn generate_colors(&mut self) {
         let mut rng = rand::thread_rng();
@@ -244,10 +226,6 @@ impl ColorPuzzle {
 
     pub fn get_seconds_added_per_success(&self) -> f32 {
         self.seconds_added_per_success
-    }
-
-    pub fn set_score(&mut self, score : usize) {
-        self.score = score;
     }
 
     pub fn is_correct_color(&self, index : usize) -> bool {
@@ -331,11 +309,6 @@ impl LevelHistory {
             f(index, *color);
         }
     }
-
-    pub fn get_color(&self, index : usize) -> LevelColor {
-        self.colors[index]
-    }
-
     pub fn get_correct_color(&self) -> Color {
         self.colors[self.correct_color_index].color
     }

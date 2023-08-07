@@ -3,8 +3,7 @@ use bevy_prototype_lyon::prelude::*;
 use bevy::core_pipeline::clear_color::ClearColorConfig;
 
 use super::components::*;
-use crate::{systems::BackgroundTranstion, game, events};
-const SQUARE_SIZE: f32 = 200.0;
+use crate::systems::BackgroundTranstion;
 const N_OF_COLS: usize = 6;
 
 #[derive(Component)]
@@ -16,7 +15,7 @@ pub fn player_interaction(
     camera_q: Query<(&Camera, &GlobalTransform, &BackgroundTranstion)>,
     event_click  : Res<Input<MouseButton>>,
     touches: Res<Touches>,
-    mut object_query: Query<(&Transform,&mut Fill, &PuzzleColor), With<PuzzleColor>>,
+    mut object_query: Query<(&Transform, &PuzzleColor), With<PuzzleColor>>,
     mut puzzle: ResMut<ColorPuzzle>,
     mut game_timer: ResMut<GameTimer>,
     mut start_level_event_writer: EventWriter<StartLevelEvent>,
@@ -45,7 +44,7 @@ pub fn player_interaction(
         }
         let mut scored = false;
         let mut colors = Vec::new();
-        for (transform,mut fill, puzzle_color) in object_query.iter_mut() {
+        for (transform, puzzle_color) in object_query.iter_mut() {
             colors.push(puzzle_color.as_level_color());
             if mouse_hover(transform.translation, world_position, puzzle.shape_size) && puzzle_color.is_correct_color {
                 puzzle.increase_score(&mut game_timer);
@@ -69,28 +68,15 @@ pub fn player_interaction(
  
 }
 
-pub fn despawn_game_history(
-    mut commands: Commands,
-    mut object_query: Query<Entity, With<PuzzleColor>>,
-    mut last_click_query: Query<Entity, With<LastClick>>,    
-) {
-    for entity in object_query.iter_mut() {
-        commands.entity(entity).despawn_recursive();
-    }
-
-    for entity in last_click_query.iter_mut() {
-        commands.entity(entity).despawn_recursive();
-    }
-}
 
 pub fn render_game_history(
     mut commands: Commands,
     mut game_history: ResMut<GameHistory>,
-    mut puzzle: ResMut<ColorPuzzle>,
+    puzzle: Res<ColorPuzzle>,
     mut render_game_history_events: EventReader<RenderLevelHistoryEvent>,
     mut object_query: Query<Entity, With<PuzzleColor>>,
     mut last_click_query: Query<Entity, With<LastClick>>,
-    mut camera_query: Query<(&mut Camera2d, &mut BackgroundTranstion), With<Camera>>,
+    mut camera_query: Query<&mut Camera2d, With<Camera>>,
 ) {
 
     let render_event = render_game_history_events.iter().next();
@@ -111,7 +97,7 @@ pub fn render_game_history(
 
     
     let level_history = game_history.get_level_history(event.index);
-    let (mut camera, mut background_transition) = camera_query.single_mut();
+    let mut camera = camera_query.single_mut();
 
     camera.clear_color = ClearColorConfig::Custom(level_history.get_correct_color());
 
@@ -185,7 +171,6 @@ pub fn render_game_history(
 }
 
 pub fn store_last_interaction_state(
-    mut commands: Commands,
     mut last_interaction_events: EventReader<LastInteractionEvent>,
     mut game_history: ResMut<GameHistory>,
 ) {
@@ -236,7 +221,6 @@ impl Default for GameTimer {
 
 
 pub fn background_transition(
-    mut commands: Commands,
     mut camera_query: Query<(&mut Camera2d, &mut BackgroundTranstion), With<Camera>>,
     time : Res<Time>,
 ) {
@@ -433,7 +417,6 @@ pub fn spawn_objects(
 }
 
 pub fn start_puzzle_level(
-    mut commands: Commands,
     mut start_level_event_writer: EventWriter<StartLevelEvent>,
     mut puzzle: ResMut<ColorPuzzle>,
     mut game_timer: ResMut<GameTimer>,
@@ -461,7 +444,6 @@ pub fn start_puzzle_level(
 }
 
 pub fn handle_new_game_event(
-    mut commands: Commands,
     mut new_game_event_reader: EventReader<NewGameEvent>,
     mut puzzle: ResMut<ColorPuzzle>,
     mut game_timer: ResMut<GameTimer>,

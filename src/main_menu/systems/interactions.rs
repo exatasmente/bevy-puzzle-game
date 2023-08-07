@@ -2,7 +2,10 @@ use bevy::app::AppExit;
 use bevy::prelude::*;
 
 use crate::game::puzzle::components::ColorPuzzle;
+use crate::game::puzzle::components::GameHistory;
 use crate::main_menu::components::*;
+use crate::pagination::Pagination;
+
 use crate::main_menu::styles::{HOVERED_BUTTON_COLOR, NORMAL_BUTTON_COLOR, PRESSED_BUTTON_COLOR};
 use crate::AppState;
 
@@ -13,12 +16,16 @@ pub fn interact_with_play_button(
     >,
     mut app_state_next_state: ResMut<NextState<AppState>>,
     mut puzzle : ResMut<ColorPuzzle>,
+    mut game_history : ResMut<GameHistory>,
+    mut pagination : ResMut<Pagination>,
 ) {
     if let Ok((interaction, mut background_color, play_button)) = button_query.get_single_mut() {
         match *interaction {
             Interaction::Clicked => {
                 *background_color = PRESSED_BUTTON_COLOR.into();
                 puzzle.setup(&play_button.game_mode);
+                game_history.reset();
+                pagination.reset();
                 app_state_next_state.set(AppState::Game);
             }
             Interaction::Hovered => {

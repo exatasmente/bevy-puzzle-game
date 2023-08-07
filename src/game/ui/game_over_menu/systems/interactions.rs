@@ -1,11 +1,8 @@
-use bevy::app::AppExit;
 use bevy::prelude::*;
 
-use super::Pagination;
+use crate::Pagination;
 use crate::game::puzzle::components::RenderLevelHistoryEvent;
 use crate::game::puzzle::components::GameTimer;
-use crate::game::puzzle::components::GameMode;
-use crate::game::puzzle::components::NewGameEvent;
 use crate::game::ui::game_over_menu::components::*;
 use crate::game::ui::game_over_menu::styles::*;
 use crate::game::ui::game_over_menu::SpawnPaginationEvent;
@@ -31,21 +28,16 @@ pub fn interact_with_level_history_option(
 }
 
 pub fn interact_with_pagination_button(
-    mut commands: Commands,
     mut button_query: Query<(&Interaction, &PaginationOption),(Changed<Interaction>, With<PaginationOption>)>,
     mut spawn_pagination_event_writer: EventWriter<SpawnPaginationEvent>,
     mut pagination: ResMut<Pagination>,
 ) {
 
-    if button_query.iter_mut().count() == 0 {
-        return;
-    }
-
-    
 
     for (interaction, pagination_button) in button_query.iter_mut() {
         match *interaction {
             Interaction::Clicked => {
+                println!("Pagination Button Clicked, {}", pagination_button.index);
                 pagination.set_page(pagination_button.index);
                 spawn_pagination_event_writer.send(SpawnPaginationEvent);
             }, 
@@ -62,7 +54,6 @@ pub fn interact_with_continue_button(
         (Changed<Interaction>, With<ContinueButton>),
     >,
     mut app_state_next_state: ResMut<NextState<AppState>>,
-    mut new_game_event_writer: EventWriter<NewGameEvent>,
     game_timer : Res<GameTimer>,
 ) {
     for (interaction, mut color) in button_query.iter_mut() {
@@ -70,9 +61,7 @@ pub fn interact_with_continue_button(
             Interaction::Clicked => {
                 *color = PRESSED_BUTTON.into();
                 if game_timer.timer.finished() {
-                    new_game_event_writer.send(NewGameEvent {
-                        game_mode : GameMode::TimeTrial,
-                    });
+                    app_state_next_state.set(AppState::MainMenu);
                 } else {
                     app_state_next_state.set(AppState::Game);
                 }

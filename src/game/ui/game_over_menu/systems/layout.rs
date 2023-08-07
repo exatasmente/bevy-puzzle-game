@@ -2,7 +2,7 @@ use bevy::prelude::*;
 
 use crate::game::ui::game_over_menu::components::*;
 use crate::game::ui::game_over_menu::styles::*;
-use crate::game::ui::game_over_menu::systems::Pagination;
+use crate::pagination::Pagination;
 use crate::game::ui::game_over_menu::SpawnPaginationEvent;
 
 pub fn spawn_game_over_menu(

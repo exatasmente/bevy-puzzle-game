@@ -8,11 +8,12 @@ mod systems;
 use systems::*;
 
 mod events;
-use events::*;
 
 mod game;
 use game::*;
 
+mod pagination;
+use pagination::*;
 
 pub const PIXELS_PER_METER: f32 = 492.3;
 pub const RESOLUTION: f32 = 16.0 / 9.0;
