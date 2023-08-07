@@ -8,8 +8,10 @@ use systems::updates::*;
 
 use crate::AppState;
 use bevy::prelude::*;
-
+use crate::game::ui::game_over_menu::systems::Pagination;
 pub struct GameOverMenuPlugin;
+
+
 
 impl Plugin for GameOverMenuPlugin {
     fn build(&self, app: &mut App) {
@@ -18,15 +20,14 @@ impl Plugin for GameOverMenuPlugin {
             .add_system(spawn_game_over_menu.in_schedule(OnEnter(AppState::GameOver)))
             .add_systems(
                 (
-                    interact_with_restart_button,
-                    interact_with_main_menu_button,
                     interact_with_level_history_option,
-                    interact_with_quit_button,
+                    interact_with_continue_button,
+                    interact_with_pagination_button,
                     update_final_score_text,
-                    mouse_scroll,
                 )
                     .in_set(OnUpdate(AppState::GameOver)),
             )
+            .init_resource::<Pagination>()
             // // OnExit State Systems
             .add_system(despawn_game_over_menu.in_schedule(OnExit(AppState::GameOver)));
     }

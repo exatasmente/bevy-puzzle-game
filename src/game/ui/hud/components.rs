@@ -7,4 +7,7 @@ pub struct HUD {}
 pub struct ScoreText {}
 
 #[derive(Component)]
-pub struct EnemyText {}
+pub struct HistoryButtom;
+
+#[derive(Component)]
+pub struct HistoryBackButtom;

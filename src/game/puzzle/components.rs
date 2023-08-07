@@ -304,15 +304,15 @@ impl GameHistory {
         self.levels.push(level);
     }
 
-    pub fn for_each_level<F>(&self, mut f: F)
+    pub fn for_each_level<F>(&self, mut f: F, start_index : usize, n_of_items : usize)
     where
         F: FnMut(usize, &LevelHistory),
     {
-        for (index, level) in self.levels.iter().enumerate() {
+        for (index, level) in self.levels.iter().enumerate().skip(start_index).take(n_of_items) {
             f(index, level);
         }
     }
-
+    
     pub fn get_level_history(&mut self, index : usize) -> &LevelHistory {
         self.levels.get(index).unwrap()
     }
@@ -323,4 +323,9 @@ impl Default for GameHistory {
     fn default() -> Self {
         Self::new()
     }
+}
+
+#[derive(Resource, Reflect, Debug)]
+pub struct GameTimer {
+    pub timer: Timer,
 }

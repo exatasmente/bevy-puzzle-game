@@ -6,7 +6,6 @@ use systems::interactions::*;
 use systems::layout::*;
 
 use crate::AppState;
-use crate::game::SimulationState;
 
 use bevy::prelude::*;
 

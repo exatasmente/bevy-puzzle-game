@@ -3,8 +3,7 @@ use bevy_prototype_lyon::prelude::*;
 use bevy::core_pipeline::clear_color::ClearColorConfig;
 
 use super::components::*;
-use crate::{systems::BackgroundTranstion, game::object};
-
+use crate::{systems::BackgroundTranstion, game};
 const SQUARE_SIZE: f32 = 200.0;
 const N_OF_COLS: usize = 6;
 
@@ -112,10 +111,6 @@ pub fn render_game_history(
     let level_history = game_history.get_level_history(event.index);
     let (mut camera, mut background_transition) = camera_query.single_mut();
 
-    background_transition.reset();
-    background_transition.set_end_color(Color::BLACK);
-    background_transition.set_start_color(level_history.get_correct_color());
-    background_transition.set_time(2.0);
     camera.clear_color = ClearColorConfig::Custom(level_history.get_correct_color());
 
 
@@ -184,6 +179,7 @@ pub fn render_game_history(
         Fill::color(Color::RED),
         LastClick,
     ));
+    
 }
 
 pub fn store_last_interaction_state(
@@ -211,8 +207,8 @@ fn mouse_hover(translation: Vec3, delta: Vec2, shape_size : f32) -> bool {
     let y2 = translation.y + shape_size;
     let x3 = delta.x;
     let y3 = delta.y;
-    let x4 = x3 + 10.0;
-    let y4 = y3 + 10.0;
+    let x4 = x3 + 30.0;
+    let y4 = y3 + 30.0;
     println!("x1: {}, y1: {}, x2: {}, y2: {}, x3: {}, y3: {}, x4: {}, y4: {}, inter : {}", x1, y1, x2, y2, x3, y3, x4, y4, cord_is_intersecting(x1, y1, x2, y2, x3, y3, x4, y4));
     cord_is_intersecting(x1, y1, x2, y2, x3, y3, x4, y4)
 }
@@ -222,11 +218,6 @@ fn random_range(min: f32, max: f32) -> f32 {
     rand::random::<f32>() * (max - min) + min
 }
 
-
-#[derive(Resource, Reflect, Debug)]
-pub struct GameTimer {
-    pub timer: Timer,
-}
 
 impl Default for GameTimer {
     fn default() -> Self {
@@ -246,20 +237,13 @@ pub fn background_transition(
     mut commands: Commands,
     mut camera_query: Query<(&mut Camera2d, &mut BackgroundTranstion), With<Camera>>,
     time : Res<Time>,
-    mut game_timer: ResMut<GameTimer>,
 ) {
 
     let (mut camera, mut background_transition) = camera_query.single_mut();
     
-    if background_transition.is_in_transition() {
-        if !game_timer.timer.paused() {
-            game_timer.timer.pause()
-        }
-        
+    if background_transition.is_in_transition() {   
         camera.clear_color = ClearColorConfig::Custom(background_transition.get_current_color());
         background_transition.update(time.delta_seconds());
-    } else if game_timer.timer.paused() {
-        game_timer.timer.unpause();
     }
 }
 
@@ -445,16 +429,26 @@ pub fn start_puzzle_level(
     mut game_timer: ResMut<GameTimer>,
     window_query: Query<&Window, With<Window>>
 ) {
-    commands.insert_resource(GameTimer { timer: puzzle.setup_timer()});
-    start_level_event_writer.send(StartLevelEvent);    
-
     let window = window_query.single();
     puzzle.set_window_size(window.width(), window.height());
+
+    if game_timer.timer.duration().as_secs_f32() != puzzle.start_seconds {
+        game_timer.timer = puzzle.setup_timer();
+    } 
+
     
 
-    if puzzle.get_score() == 0 {
+    if game_timer.timer.finished() {
         game_timer.timer = puzzle.setup_timer();
     }
+
+
+    if game_timer.timer.paused() {
+        game_timer.timer.unpause();
+    }
+
+    start_level_event_writer.send(StartLevelEvent);    
+
 }
 
 

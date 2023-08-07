@@ -79,7 +79,11 @@ impl BackgroundTranstion {
 
     pub fn update(&mut self, time: f32) {
         if self.is_in_transition() {
-            self.current_time += time;
+            self.current_time = if self.current_time + time > self.time {
+                self.time
+            } else {
+                self.current_time + time
+            };
         }
     }
 

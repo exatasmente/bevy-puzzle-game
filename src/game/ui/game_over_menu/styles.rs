@@ -22,41 +22,46 @@ pub const GAME_OVER_MENU_CONTAINER_STYLE: Style = Style {
     align_items: AlignItems::Center,
     size: Size::new(Val::Percent(100.), Val::Percent(100.)),
     gap: Size::new(Val::Px(8.0), Val::Px(8.0)),
-    overflow: Overflow::Hidden,
     ..Style::DEFAULT
 };
 
-pub const BUTTON_STYLE: Style = Style {
-    size: Size::new(Val::Px(200.0), Val::Px(80.0)),
-    justify_content: JustifyContent::Center,
-    align_items: AlignItems::Center,
-    ..Style::DEFAULT
-};
 
 pub const BUTTON_HISTORY_STYLE: Style = Style {
-    size: Size::new(Val::Percent(100.), Val::Px(80.0)),
+    size: Size::new(Val::Percent(50.), Val::Px(80.0)),
     margin: UiRect::all(Val::Px(10.0)),
     justify_content: JustifyContent::Center,
     align_items: AlignItems::Center,
     ..Style::DEFAULT
 };
 
+pub const PAGINATION_CONTAINER_STYLE: Style = Style {
+    display: Display::Flex,
+    flex_direction: FlexDirection::Row,
+    justify_content: JustifyContent::Center,
+    align_items: AlignItems::Center,
+    size: Size::new(Val::Percent(100.), Val::Px(60.)),
+    gap: Size::new(Val::Px(8.0), Val::Px(8.0)),
+    margin: UiRect::all(Val::Px(10.0)),
+    ..Style::DEFAULT
+};
 
-pub fn get_title_text_style(asset_server: &Res<AssetServer>) -> TextStyle {
-    TextStyle {
-        font: asset_server.load("digital7mono.ttf"),
-        font_size: 24.0,
-        color: Color::rgb(1.0, 1.0, 1.0),
-    }
-}
+pub const BUTTON_PAGINATION_STYLE: Style = Style {
+    size: Size::new(Val::Px(40.0), Val::Px(40.0)),
+    display: Display::Flex,
+    flex_direction: FlexDirection::Column,
+    margin: UiRect::all(Val::Px(4.0)),
+    justify_content: JustifyContent::Center,
+    align_items: AlignItems::Center,
+    ..Style::DEFAULT
+};
 
-pub fn get_final_score_text_style(asset_server: &Res<AssetServer>) -> TextStyle {
-    TextStyle {
-        font: asset_server.load("digital7mono.ttf"),
-        font_size: 20.0,
-        color: Color::rgb(1.0, 1.0, 1.0),
-    }
-}
+pub const PAGINATION_TEXT_STYLE: Style = Style {
+    display: Display::Flex,
+    flex_direction : FlexDirection::Row,
+    justify_content: JustifyContent::Center,
+    align_items: AlignItems::Center,
+    ..Style::DEFAULT
+};
 
 pub fn get_button_text_style(asset_server: &Res<AssetServer>) -> TextStyle {
     TextStyle {

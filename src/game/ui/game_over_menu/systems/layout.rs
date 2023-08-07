@@ -1,19 +1,32 @@
-use bevy::{
-    prelude::*,
-    input::mouse::{MouseScrollUnit, MouseWheel},
-};
+use bevy::prelude::*;
 
+use crate::game::puzzle;
 use crate::game::puzzle::components::GameHistory;
 use crate::game::ui::game_over_menu::components::*;
 use crate::game::ui::game_over_menu::styles::*;
+use crate::game::ui::game_over_menu::systems::Pagination;
+use crate::game::puzzle::components::GameTimer;
 
-pub fn spawn_game_over_menu(mut commands: Commands, asset_server: Res<AssetServer>, game_history : Res<GameHistory>) {
-    build_game_over_menu(&mut commands, &asset_server, &game_history);
+pub fn spawn_game_over_menu(
+    mut commands: Commands, 
+    asset_server: Res<AssetServer>, 
+    game_history : Res<GameHistory>,
+    mut pagination : ResMut<Pagination>,
+    mut game_timer: ResMut<GameTimer>,
+) {
+    build_game_over_menu(&mut commands, &asset_server, &game_history, &mut pagination, &mut game_timer);
 }
 
 
 
-pub fn build_game_over_menu(commands: &mut Commands, asset_server: &Res<AssetServer>, game_history : &Res<GameHistory>) -> Entity {
+pub fn build_game_over_menu(
+    commands: &mut Commands, 
+    asset_server: &Res<AssetServer>, 
+    game_history : &Res<GameHistory>, 
+    pagination : &mut ResMut<Pagination>, 
+    game_timer: &mut ResMut<GameTimer>,
+) -> Entity {
+    pagination.set_max_page(game_history.levels_played);
     let game_over_menu_entity = commands
         .spawn((
             NodeBundle {
@@ -31,46 +44,36 @@ pub fn build_game_over_menu(commands: &mut Commands, asset_server: &Res<AssetSer
                     ..default()
                 })
                 .with_children(|parent| {
+                    let _= &game_history.for_each_level(|index, level| {
                     parent
-                        .spawn((
-                            NodeBundle {
-                                style: Style {
-                                    flex_direction: FlexDirection::Column,
-                                    align_items: AlignItems::Center,
-                                    ..default()
-                                },
+                    .spawn((
+                        ButtonBundle {
+                            style: BUTTON_HISTORY_STYLE,
+                            background_color: NORMAL_BUTTON.into(),
+                            ..default()
+                        },
+                        LevelHistoryOption { index },
+                    ))
+                    .with_children(|parent| {
+                        parent.spawn(TextBundle {
+                            style: PAGINATION_TEXT_STYLE,
+                            text: Text {
+                                sections: vec![TextSection::new(
+                                    format!("Level {}, Scored : {}", index + 1, level.scored),
+                                    get_button_text_style(&asset_server),
+                                )],
+                                alignment: TextAlignment::Center,
                                 ..default()
                             },
-                            ScrollingList::default(),
-                        ))
-                        .with_children(|parent| {
-                            let _= &game_history.for_each_level(|index, level| {
-                                parent
-                                .spawn((
-                                    ButtonBundle {
-                                        style: BUTTON_HISTORY_STYLE,
-                                        background_color: NORMAL_BUTTON.into(),
-                                        ..default()
-                                    },
-                                    LevelHistoryOption { index },
-                                ))
-                                .with_children(|parent| {
-                                    parent.spawn(TextBundle {
-                                        style: Style { ..default() },
-                                        text: Text {
-                                            sections: vec![TextSection::new(
-                                                format!("Level {}, Scored : {}", index + 1, level.scored),
-                                                get_button_text_style(&asset_server),
-                                            )],
-                                            alignment: TextAlignment::Center,
-                                            ..default()
-                                        },
-                                        ..default()
-                                    });
-                                });
-                            });
+                            ..default()
                         });
-                });
+                    });
+                }, pagination.get_start_index(), pagination.get_items_per_page());
+
+                build_pagination_element(asset_server, parent, pagination);
+                build_back_button(asset_server, game_timer, parent);
+            });
+
         })
         .id();
 
@@ -86,34 +89,81 @@ pub fn despawn_game_over_menu(
     }
 }
 
+pub fn build_back_button(
+    asset_server: &Res<AssetServer>,
+    game_timer: &mut ResMut<GameTimer>,
+    parent : &mut ChildBuilder,
+) {
 
-#[derive(Component, Default)]
-pub struct ScrollingList {
-    position: f32,
+    let text = if game_timer.timer.finished() {
+        "Restart"
+    } else {
+        "Continue"
+    };
+    
+    parent
+        .spawn((
+            ButtonBundle {
+                style: BUTTON_HISTORY_STYLE,
+                background_color: NORMAL_BUTTON.into(),
+                ..default()
+            },
+            ContinueButton {},
+        ))
+        .with_children(|parent| {
+            parent.spawn(TextBundle {
+                style: Style { ..default() },
+                text: Text {
+                    sections: vec![TextSection::new(
+                        text,
+                        get_button_text_style(&asset_server),
+                    )],
+                    alignment: TextAlignment::Center,
+                    ..default()
+                },
+                ..default()
+            });
+        });
 }
 
-pub fn mouse_scroll(
-    mut mouse_wheel_events: EventReader<MouseWheel>,
-    mut query_list: Query<(&mut ScrollingList, &mut Style, &Parent, &Node)>,
-    query_node: Query<&Node>,
+fn build_pagination_element(
+    asset_server: &Res<AssetServer>,
+    parent : &mut ChildBuilder,
+    mut pagination: &mut ResMut<Pagination>,
 ) {
-    for mouse_wheel_event in mouse_wheel_events.iter() {
-        for (mut scrolling_list, mut style, parent, list_node) in &mut query_list {
-            let items_height = list_node.size().y;
-            let container_height = query_node.get(parent.get()).unwrap().size().y;
-
-            let max_scroll = (items_height - container_height).max(0.);
-
-            let dy = match mouse_wheel_event.unit {
-                MouseScrollUnit::Line => mouse_wheel_event.y * 20.,
-                MouseScrollUnit::Pixel => mouse_wheel_event.y,
-            };
-
-            scrolling_list.position += dy;
-            scrolling_list.position = scrolling_list.position.clamp(-max_scroll, 0.);
-            style.position.top = Val::Px(scrolling_list.position);
+    parent
+    .spawn(NodeBundle {
+        style: PAGINATION_CONTAINER_STYLE,
+        background_color: BACKGROUND_COLOR.into(),
+        ..default()
+    })
+    .with_children(|parent| {
+        for index in 0..pagination.max_page {
+            parent
+                .spawn((
+                    ButtonBundle {
+                        style: BUTTON_PAGINATION_STYLE,
+                        background_color: NORMAL_BUTTON.into(),
+                        ..default()
+                    },
+                    PaginationOption { index },
+                ))
+                .with_children(|parent| {
+                    parent.spawn(TextBundle {
+                        style: PAGINATION_TEXT_STYLE,
+                        text: Text {
+                            sections: vec![TextSection::new(
+                                format!("{}", index + 1),
+                                get_button_text_style(&asset_server),
+                            )],
+                            alignment: TextAlignment::Center,
+                            ..default()
+                        },
+                        ..default()
+                    });
+                });
         }
-    }
+    });
 }
 
 // References
