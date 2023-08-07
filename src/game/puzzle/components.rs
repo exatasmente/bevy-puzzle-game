@@ -51,7 +51,7 @@ impl GameMode {
     pub fn as_str(&self) -> &'static str {
         match self {
             GameMode::Infinite => "Infinto",
-            GameMode::AgainstTheClock => "Conta o Tempo",
+            GameMode::AgainstTheClock => "Contra o Tempo",
             GameMode::TimeTrial => "Soma de Tempo",
         }
     }
