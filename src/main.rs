@@ -36,12 +36,12 @@ fn main() {
                 title: "PUZZLE".into(),
                 canvas : Some("#canvas".into()),
                 prevent_default_event_handling: false,
-                resolution : (480., 640.).into(),
+                fit_canvas_to_parent: true,
                 resize_constraints : WindowResizeConstraints {
                     min_width : 320.,
                     min_height : 480.,
-                    max_width : 720.,
-                    max_height : 1280.,
+                    max_width : 1080.,
+                    max_height : 4096.,
                 },
                 ..default()
             }),
