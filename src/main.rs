@@ -19,11 +19,12 @@ pub const RESOLUTION: f32 = 16.0 / 9.0;
 
 fn main() {
     App::new()
-        .insert_resource(ClearColor(Color::rgb(0.0, 0.0, 0.0)))
         .add_state::<AppState>()
+        .insert_resource(ClearColor(Color::rgb(0.0, 0.0, 0.0)))
         // My Plugins
         .add_plugin(MainMenuPlugin)
         .add_plugin(GamePlugin)
+        
         // Startup Systems
         .add_startup_system(spawn_camera)
         // Systems
@@ -49,7 +50,6 @@ fn main() {
             ..default()
         }))
         .add_plugin(ShapePlugin)
-        .register_type::<BackgroundTranstion>()
         .run();
 }
 

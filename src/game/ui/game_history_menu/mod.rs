@@ -21,16 +21,10 @@ impl Plugin for GameHistoryMenuPlugin {
             .add_event::<SpawnPaginationEvent>()
             // OnEnter State Systems
             .add_system(spawn_game_history_menu.in_schedule(OnEnter(AppState::History)))
-            .add_systems(
-                (
-                    interact_with_level_history_option,
-                    interact_with_continue_button,
-                    interact_with_pagination_button,
-                    spawn_pagination_itens,
-                )
-                    .in_set(OnUpdate(AppState::History)),
-            )
-            
+            .add_system(interact_with_level_history_option.run_if(in_state(AppState::History)))
+            .add_system(interact_with_continue_button.run_if(in_state(AppState::History)))
+            .add_system(interact_with_pagination_button.run_if(in_state(AppState::History)))
+            .add_system(spawn_pagination_itens.run_if(in_state(AppState::History)))
             // // OnExit State Systems
             .add_system(despawn_game_history_menu.in_schedule(OnExit(AppState::History)));
     }
