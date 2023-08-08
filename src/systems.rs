@@ -138,7 +138,7 @@ pub fn transition_to_game_over_state(
 ) {
     if keyboard_input.just_pressed(KeyCode::H) {
         if app_state.0 != AppState::GameOver {
-            app_state_next_state.set(AppState::GameOver);
+            app_state_next_state.set(AppState::History);
             println!("Entered AppState::GameOver");
         }
     }

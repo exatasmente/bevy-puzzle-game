@@ -1,8 +1,8 @@
-mod game_over_menu;
+mod game_history_menu;
 mod pause_menu;
 mod hud;
 
-use game_over_menu::GameOverMenuPlugin;
+use game_history_menu::GameHistoryMenuPlugin;
 use pause_menu::PauseMenuPlugin;
 use hud::HudPlugin;
 
@@ -16,6 +16,6 @@ impl Plugin for GameUIPlugin {
             // Plugins
             .add_plugin(PauseMenuPlugin)
             .add_plugin(HudPlugin)
-            .add_plugin(GameOverMenuPlugin);
+            .add_plugin(GameHistoryMenuPlugin);
     }
 }

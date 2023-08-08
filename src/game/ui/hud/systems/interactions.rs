@@ -10,7 +10,7 @@ pub fn interact_with_pause_button(
     for interaction in interaction_query.iter_mut() {
         match interaction {
             Interaction::Clicked => {
-                app_state_next_state.set(AppState::GameOver)
+                app_state_next_state.set(AppState::History)
             },
             _ => {}
         }
@@ -25,7 +25,7 @@ pub fn interact_with_history_back_button(
     for interaction in interaction_query.iter_mut() {
         match interaction {
             Interaction::Clicked => {
-                app_state_next_state.set(AppState::GameOver)
+                app_state_next_state.set(AppState::History)
             },
             _ => {}
         }

@@ -24,7 +24,9 @@ impl Plugin for PuzzlePlugin {
             .add_system(despaw_objects.in_schedule(OnExit(super::AppState::Game)))
             .add_systems((
                 render_game_history,
-                handle_new_game_event
+            ).in_set(OnUpdate(super::AppState::LevelHistory)))
+            .add_systems((
+                handle_new_game_event,
             ).in_set(OnUpdate(super::AppState::GameOver)))
             .add_systems((
                 background_transition,

@@ -14,12 +14,12 @@ impl Plugin for HudPlugin {
         app
             // OnEnter Systems
             .add_system(spawn_hud.in_schedule(OnEnter(AppState::Game)))
-            .add_system(spawn_back_button.in_schedule(OnEnter(AppState::History)))
+            .add_system(spawn_back_button.in_schedule(OnEnter(AppState::LevelHistory)))
             // Systems
-            .add_system(interact_with_history_back_button.run_if(in_state(AppState::History)))
+            .add_system(interact_with_history_back_button.run_if(in_state(AppState::LevelHistory)))
             .add_system(interact_with_pause_button.run_if(in_state(AppState::Game)))
             // OnExit Systems
             .add_system(despawn_hud.in_schedule(OnExit(AppState::Game)))
-            .add_system(despawn_back_button.in_schedule(OnExit(AppState::History)));
+            .add_system(despawn_back_button.in_schedule(OnExit(AppState::LevelHistory)));
     }
 }

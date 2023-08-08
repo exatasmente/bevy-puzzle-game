@@ -196,7 +196,6 @@ fn mouse_hover(translation: Vec3, delta: Vec2, shape_size : f32) -> bool {
     let y3 = delta.y;
     let x4 = x3 + 30.0;
     let y4 = y3 + 30.0;
-    println!("x1: {}, y1: {}, x2: {}, y2: {}, x3: {}, y3: {}, x4: {}, y4: {}, inter : {}", x1, y1, x2, y2, x3, y3, x4, y4, cord_is_intersecting(x1, y1, x2, y2, x3, y3, x4, y4));
     cord_is_intersecting(x1, y1, x2, y2, x3, y3, x4, y4)
 }
 
