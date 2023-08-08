@@ -62,7 +62,7 @@ pub fn interact_with_continue_button(
             Interaction::Clicked => {
                 *color = PRESSED_BUTTON.into();
                 if game_timer.timer.finished() {
-                    app_state_next_state.set(AppState::MainMenu);
+                    app_state_next_state.set(AppState::GameOver);
                 } else {
                     app_state_next_state.set(AppState::Game);
                 }

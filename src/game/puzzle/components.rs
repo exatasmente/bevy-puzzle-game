@@ -150,8 +150,8 @@ impl ColorPuzzle {
         self.height = height;
 
 
-        self.shape_size = if width / 4.0 > 200.0 {
-            200.0
+        self.shape_size = if width / 4.0 > 140.0 {
+            140.0
         } else {
             width / 4.0
         };
@@ -319,6 +319,8 @@ pub struct GameHistory {
     pub levels_played: usize,
     pub total_score: usize,
     pub max_streak: usize,
+    pub total_time: f32,
+    pub game_mode: GameMode,
     current_streak: usize,
     pub levels : Vec<LevelHistory>,
 }
@@ -330,8 +332,18 @@ impl GameHistory {
             total_score: 0,
             current_streak: 0,
             max_streak: 0,
+            game_mode: GameMode::Infinite,
+            total_time: 0.0,
             levels: vec![],
         }
+    }
+
+    pub fn set_game_mode(&mut self, game_mode : GameMode) {
+        self.game_mode = game_mode;
+    }
+
+    pub fn set_total_time(&mut self, total_time : f32) {
+        self.total_time = total_time;
     }
 
     pub fn add_level(&mut self, level: LevelHistory) {
@@ -367,8 +379,16 @@ impl GameHistory {
         self.total_score = 0;
         self.current_streak = 0;
         self.max_streak = 0;
+        self.total_time = 0.0;
         self.levels = vec![];
     }
+
+    pub fn get_formatted_time(&self) -> String {
+        let minutes = self.total_time as u32 / 60;
+        let seconds = self.total_time as u32 % 60;
+        format!("{:02}:{:02}", minutes, seconds)
+    }
+
 
 }
 

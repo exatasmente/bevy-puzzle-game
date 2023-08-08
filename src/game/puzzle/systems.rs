@@ -240,6 +240,7 @@ pub fn render_remaining_time(
     mut query: Query<&mut Text, With<RemainingTime>>,
     asset_server: Res<AssetServer>,
     mut game_timer: ResMut<GameTimer>,
+    mut game_history: ResMut<GameHistory>,
     puzzle: Res<ColorPuzzle>,
     mut app_state_next_state: ResMut<NextState<crate::AppState>>,
     time : Res<Time>,
@@ -276,12 +277,13 @@ pub fn render_remaining_time(
 
     let mut text = query.single_mut();
 
+    text.sections[0].value = format!("Time : {:02.0} ", game_timer.timer.remaining_secs());
+    
     if game_timer.timer.finished() {
+        game_history.set_game_mode(puzzle.game_mode);
+        game_history.set_total_time(game_timer.timer.duration().as_secs_f32());
         app_state_next_state.set(crate::AppState::GameOver);
     }
-
-    text.sections[0].value = format!("Time : {:02.0} ", game_timer.timer.remaining_secs());
-
   
 }
 

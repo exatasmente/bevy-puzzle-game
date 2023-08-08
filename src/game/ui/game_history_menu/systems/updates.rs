@@ -1,18 +1,17 @@
 use bevy::prelude::*;
 
-use crate::game::puzzle::components::GameHistory;
-use crate::game::ui::game_history_menu::components::*;
-use crate::game::ui::game_history_menu::styles::*;
+use crate::puzzle::components::GameHistory;
+use crate::ui::game_history_menu::components::*;
+use crate::ui::game_history_menu::styles::*;
 use crate::pagination::Pagination;
-use crate::game::puzzle::components::GameTimer;
-use crate::game::ui::game_history_menu::SpawnPaginationEvent;
+use crate::puzzle::components::GameTimer;
+use crate::ui::game_history_menu::SpawnPaginationEvent;
 
 pub fn spawn_pagination_itens(
     mut commands: Commands,
     game_history : Res<GameHistory>, 
     asset_server: Res<AssetServer>,
     mut pagination :ResMut<Pagination>,
-    mut game_timer: ResMut<GameTimer>,
     mut spawn_pagination_event_reader: EventReader<SpawnPaginationEvent>,
 ) {
 
@@ -53,7 +52,7 @@ pub fn spawn_pagination_itens(
         }, pagination.get_start_index(), pagination.get_items_per_page());
 
         build_pagination_element(&asset_server, parent, &mut pagination);
-        build_back_button(&asset_server, &mut game_timer, parent);
+        build_back_button(&asset_server, parent);
     });
 
 
@@ -62,16 +61,11 @@ pub fn spawn_pagination_itens(
 
 pub fn build_back_button(
     asset_server: &Res<AssetServer>,
-    game_timer: &mut ResMut<GameTimer>,
     parent : &mut ChildBuilder,
 ) {
 
-    let text = if game_timer.timer.finished() {
-        "Menu"
-    } else {
-        "Continue"
-    };
-    
+    let text = "Voltar";
+
     parent
         .spawn((
             ButtonBundle {

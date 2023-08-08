@@ -21,33 +21,35 @@ pub const GAME_OVER_MENU_CONTAINER_STYLE: Style = Style {
     flex_direction: FlexDirection::Column,
     justify_content: JustifyContent::Center,
     align_items: AlignItems::Center,
-    size: Size::new(Val::Percent(100.), Val::Percent(100.)),
+    align_content: AlignContent::Center,
+    align_self: AlignSelf::Center, 
+    size: Size::new(Val::Percent(80.), Val::Percent(80.)),
     gap: Size::new(Val::Px(8.0), Val::Px(8.0)),
     ..Style::DEFAULT
 };
 
-
-pub const BUTTON_HISTORY_STYLE: Style = Style {
-    size: Size::new(Val::Percent(50.), Val::Px(80.0)),
-    margin: UiRect::all(Val::Px(10.0)),
-    justify_content: JustifyContent::Center,
-    align_items: AlignItems::Center,
-    ..Style::DEFAULT
-};
-
-pub const PAGINATION_CONTAINER_STYLE: Style = Style {
+pub const GAME_OVER_TEXT_STYLE : Style = Style {
     display: Display::Flex,
     flex_direction: FlexDirection::Row,
+    size: Size::new(Val::Percent(30.0), Val::Px(70.0)),
+    margin: UiRect::all(Val::Px(2.0)),
     justify_content: JustifyContent::Center,
     align_items: AlignItems::Center,
-    size: Size::new(Val::Percent(100.), Val::Px(100.)),
-    gap: Size::new(Val::Px(8.0), Val::Px(8.0)),
-    margin: UiRect::all(Val::Px(10.0)),
     ..Style::DEFAULT
 };
 
-pub const BUTTON_PAGINATION_STYLE: Style = Style {
-    size: Size::new(Val::Px(60.0), Val::Px(60.0)),
+pub const GAME_OVER_RESUME_TEXT_STYLE : Style = Style {
+    display: Display::Flex,
+    flex_direction: FlexDirection::Row,
+    size: Size::new(Val::Percent(30.0), Val::Px(40.0)),
+    margin: UiRect::all(Val::Px(2.0)),
+    justify_content: JustifyContent::Center,
+    align_items: AlignItems::Center,
+    ..Style::DEFAULT
+};
+
+pub const BUTTON_STYLE: Style = Style {
+    size: Size::new(Val::Percent(50.0), Val::Px(60.0)),
     display: Display::Flex,
     flex_direction: FlexDirection::Column,
     margin: UiRect::all(Val::Px(4.0)),
@@ -56,27 +58,27 @@ pub const BUTTON_PAGINATION_STYLE: Style = Style {
     ..Style::DEFAULT
 };
 
-pub const PAGINATION_TEXT_STYLE: Style = Style {
-    display: Display::Flex,
-    flex_direction : FlexDirection::Row,
-    justify_content: JustifyContent::Center,
-    align_items: AlignItems::Center,
-    ..Style::DEFAULT
-};
 
-pub fn get_button_text_style(asset_server: &Res<AssetServer>,) -> TextStyle {
+pub fn get_title_text_style(asset_server: &Res<AssetServer>) -> TextStyle {
     TextStyle {
         font: asset_server.load("digital7mono.ttf"),
-        font_size: 12.0,
+        font_size: 32.0,
         color: Color::rgb(1.0, 1.0, 1.0),
     }
 }
 
-
-pub fn get_pagination_button_text_style(asset_server: &Res<AssetServer>,) -> TextStyle {
+pub fn get_resume_text_style(asset_server: &Res<AssetServer>) -> TextStyle {
     TextStyle {
         font: asset_server.load("digital7mono.ttf"),
-        font_size: 20.0,
+        font_size: 18.0,
+        color: Color::rgb(1.0, 1.0, 1.0),
+    }
+}
+
+pub fn get_button_text_style(asset_server: &Res<AssetServer>) -> TextStyle {
+    TextStyle {
+        font: asset_server.load("digital7mono.ttf"),
+        font_size: 12.0,
         color: Color::rgb(1.0, 1.0, 1.0),
     }
 }
