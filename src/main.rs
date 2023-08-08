@@ -1,6 +1,4 @@
 use bevy::prelude::*;
-
-use bevy_inspector_egui::quick::WorldInspectorPlugin;
 use bevy_prototype_lyon::prelude::ShapePlugin;
 mod main_menu;
 use main_menu::*;
@@ -50,7 +48,6 @@ fn main() {
             ..default()
         }))
         .add_plugin(ShapePlugin)
-        .add_plugin(WorldInspectorPlugin::new())
         .register_type::<BackgroundTranstion>()
         .run();
 }
