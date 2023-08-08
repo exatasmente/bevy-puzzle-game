@@ -3,7 +3,6 @@ use bevy::prelude::*;
 pub const BACKGROUND_COLOR: Color = Color::rgba(0.25, 0.25, 0.25, 0.5);
 
 pub const NORMAL_BUTTON: Color = Color::rgb(0.15, 0.15, 0.15);
-pub const TRANSPARENT_BUTTON: Color = Color::rgba(0.0, 0.0, 0.0, 0.0);
 pub const HOVERED_BUTTON: Color = Color::rgb(0.25, 0.25, 0.25);
 pub const PRESSED_BUTTON: Color = Color::rgb(0.35, 0.75, 0.35);
 
@@ -31,7 +30,7 @@ pub const GAME_OVER_MENU_CONTAINER_STYLE: Style = Style {
 pub const GAME_OVER_TEXT_STYLE : Style = Style {
     display: Display::Flex,
     flex_direction: FlexDirection::Row,
-    size: Size::new(Val::Percent(30.0), Val::Px(70.0)),
+    size: Size::new(Val::Percent(40.0), Val::Px(70.0)),
     margin: UiRect::all(Val::Px(2.0)),
     justify_content: JustifyContent::Center,
     align_items: AlignItems::Center,
@@ -41,7 +40,7 @@ pub const GAME_OVER_TEXT_STYLE : Style = Style {
 pub const GAME_OVER_RESUME_TEXT_STYLE : Style = Style {
     display: Display::Flex,
     flex_direction: FlexDirection::Row,
-    size: Size::new(Val::Percent(30.0), Val::Px(40.0)),
+    size: Size::new(Val::Percent(40.0), Val::Px(40.0)),
     margin: UiRect::all(Val::Px(2.0)),
     justify_content: JustifyContent::Center,
     align_items: AlignItems::Center,

@@ -10,18 +10,7 @@ pub fn spawn_game_history_menu(
     mut pagination : ResMut<Pagination>,
     mut spawn_pagination_event_writer: EventWriter<SpawnPaginationEvent>,
 ) {
-    build_game_history_menu(&mut commands,  &mut pagination);
-    spawn_pagination_event_writer.send(SpawnPaginationEvent);
-}
-
-#[derive(Component)]
-pub struct PaginationContainer;
-
-pub fn build_game_history_menu(
-    commands: &mut Commands, 
-    pagination : &mut ResMut<Pagination>, 
-) -> Entity {
-    let game_history_menu_entity = commands
+    commands
         .spawn((
             NodeBundle {
                 style: GAME_OVER_MENU_STYLE,
@@ -39,13 +28,13 @@ pub fn build_game_history_menu(
                 },  PaginationContainer {})).id();
 
             pagination.set_entity(pagination_container);
-
-
-        })
-        .id();
-
-    game_history_menu_entity
+        });
+        
+    spawn_pagination_event_writer.send(SpawnPaginationEvent);
 }
+
+#[derive(Component)]
+pub struct PaginationContainer;
 
 pub fn despawn_game_history_menu(
     mut commands: Commands,

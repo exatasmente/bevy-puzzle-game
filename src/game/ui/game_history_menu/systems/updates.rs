@@ -4,7 +4,6 @@ use crate::puzzle::components::GameHistory;
 use crate::ui::game_history_menu::components::*;
 use crate::ui::game_history_menu::styles::*;
 use crate::pagination::Pagination;
-use crate::puzzle::components::GameTimer;
 use crate::ui::game_history_menu::SpawnPaginationEvent;
 
 pub fn spawn_pagination_itens(

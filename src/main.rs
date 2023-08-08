@@ -1,4 +1,4 @@
-use bevy::prelude::*;
+use bevy::{prelude::*, window::PresentMode};
 use bevy_prototype_lyon::prelude::ShapePlugin;
 mod main_menu;
 use main_menu::*;
@@ -33,6 +33,7 @@ fn main() {
         .add_system(exit_game)
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
+                present_mode : PresentMode::AutoVsync,
                 title: "PUZZLE".into(),
                 canvas : Some("#canvas".into()),
                 prevent_default_event_handling: false,

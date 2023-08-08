@@ -17,6 +17,8 @@ pub struct SpawnPaginationEvent;
 impl Plugin for GameHistoryMenuPlugin {
     fn build(&self, app: &mut App) {
         app
+            .init_resource::<Pagination>()
+            .add_event::<SpawnPaginationEvent>()
             // OnEnter State Systems
             .add_system(spawn_game_history_menu.in_schedule(OnEnter(AppState::History)))
             .add_systems(
@@ -28,8 +30,7 @@ impl Plugin for GameHistoryMenuPlugin {
                 )
                     .in_set(OnUpdate(AppState::History)),
             )
-            .init_resource::<Pagination>()
-            .add_event::<SpawnPaginationEvent>()
+            
             // // OnExit State Systems
             .add_system(despawn_game_history_menu.in_schedule(OnExit(AppState::History)));
     }
