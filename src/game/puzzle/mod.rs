@@ -22,12 +22,8 @@ impl Plugin for PuzzlePlugin {
             .register_type::<ColorPuzzle>()
             .add_system(start_puzzle_level.in_schedule(OnEnter(super::AppState::Game)))
             .add_system(despaw_objects.in_schedule(OnExit(super::AppState::Game)))
-            .add_systems((
-                render_game_history,
-            ).in_set(OnUpdate(super::AppState::LevelHistory)))
-            .add_systems((
-                handle_new_game_event,
-            ).in_set(OnUpdate(super::AppState::GameOver)))
+            .add_system(render_game_history.run_if(in_state(super::AppState::LevelHistory)))
+            .add_system(handle_new_game_event.run_if(in_state(super::AppState::GameOver)))
             .add_systems((
                 background_transition,
                 render_remaining_time,
