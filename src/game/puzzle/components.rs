@@ -373,8 +373,16 @@ impl GameHistory {
         }
     }
     
-    pub fn get_level_history(&mut self, index : usize) -> &LevelHistory {
+    pub fn get_level_history(&self, index : usize) -> &LevelHistory {
         self.levels.get(index).unwrap()
+    }
+
+    pub fn get_previous_level_history(&self, index : usize) -> Option<&LevelHistory> {
+        if index == 0 {
+            return None;
+        }
+        
+        self.levels.get(index - 1)
     }
 
     pub fn reset(&mut self) {

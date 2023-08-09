@@ -25,12 +25,12 @@ impl Plugin for PuzzlePlugin {
             .add_system(render_game_history.run_if(in_state(super::AppState::LevelHistory)))
             .add_system(handle_new_game_event.run_if(in_state(super::AppState::GameOver)))
             .add_systems((
-                background_transition,
                 render_remaining_time,
                 store_last_interaction_state,
                 spawn_objects,
                 player_interaction,
-            ).in_set(OnUpdate(super::AppState::Game)));
+            ).in_set(OnUpdate(super::AppState::Game)))
+            .add_system(background_transition);
             
     }
 }

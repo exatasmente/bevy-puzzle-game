@@ -71,12 +71,12 @@ pub fn player_interaction(
 
 pub fn render_game_history(
     mut commands: Commands,
-    mut game_history: ResMut<GameHistory>,
+    game_history: Res<GameHistory>,
     puzzle: Res<ColorPuzzle>,
     mut render_game_history_events: EventReader<RenderLevelHistoryEvent>,
     mut object_query: Query<Entity, With<PuzzleColor>>,
     mut last_click_query: Query<Entity, With<LastClick>>,
-    mut camera_query: Query<&mut Camera2d, With<Camera>>,
+    mut camera_query: Query<(&mut Camera2d, &mut BackgroundTranstion), With<Camera>>,
 ) {
 
     let render_event = render_game_history_events.iter().next();
@@ -97,10 +97,20 @@ pub fn render_game_history(
 
     
     let level_history = game_history.get_level_history(event.index);
-    let mut camera = camera_query.single_mut();
+    let previous_level_history = game_history.get_previous_level_history(event.index);
+    let (mut camera, mut background_transition) = camera_query.single_mut();
 
-    camera.clear_color = ClearColorConfig::Custom(level_history.get_correct_color());
-
+    background_transition.reset();
+    if previous_level_history.is_some() {
+        let previous_level_history = previous_level_history.unwrap();
+        background_transition.set_start_color(previous_level_history.get_correct_color());
+    } else {
+        background_transition.set_start_color(puzzle.get_color());
+    }
+    
+    background_transition.set_end_color(level_history.get_correct_color());
+    
+    camera.clear_color = ClearColorConfig::Custom(Color::BLACK);
 
     let shape =  shapes::Rectangle {
         extents: Vec2::new(puzzle.shape_size, puzzle.shape_size),
