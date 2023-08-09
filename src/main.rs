@@ -18,6 +18,9 @@ use pagination::*;
 mod wasm;
 use wasm::*;
 
+mod interaction_animation;
+use interaction_animation::*;
+
 pub const PIXELS_PER_METER: f32 = 492.3;
 pub const RESOLUTION: f32 = 16.0 / 9.0;
 
@@ -25,11 +28,13 @@ fn main() {
     App::new()
         .add_state::<AppState>()
         .add_event::<TransitionToStateEvent>()
+        .add_event::<InteractionAnimationEvent>()
         .insert_resource(ClearColor(Color::rgb(0.0, 0.0, 0.0)))
         // My Plugins
         .add_plugin(MainMenuPlugin)
         .add_plugin(GamePlugin)
         .add_plugin(WasmPlugin)
+        .add_plugin(InteractionAnimationPlugin)
         
         // Startup Systems
         .add_startup_system(spawn_camera)

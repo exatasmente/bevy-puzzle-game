@@ -8,3 +8,8 @@ pub struct GameOver {
 pub struct TransitionToStateEvent {
     pub state: AppState,
 }
+
+pub struct InteractionAnimationEvent {
+    pub x: f32,
+    pub y: f32,
+}

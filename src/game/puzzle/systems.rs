@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use bevy_prototype_lyon::prelude::*;
 use bevy::core_pipeline::clear_color::ClearColorConfig;
-
+use crate::events::InteractionAnimationEvent;
 use super::components::*;
 use crate::systems::BackgroundTranstion;
 const N_OF_COLS: usize = 6;
@@ -20,6 +20,7 @@ pub fn player_interaction(
     mut game_timer: ResMut<GameTimer>,
     mut start_level_event_writer: EventWriter<StartLevelEvent>,
     mut last_interraction_event_writer: EventWriter<LastInteractionEvent>,
+    mut interaction_animation_event_writer: EventWriter<InteractionAnimationEvent>,
     last_click_query: Query<Entity, With<LastClick>>,
 ) {
 
@@ -42,6 +43,11 @@ pub fn player_interaction(
         for last_click in last_click_query.iter() {
             commands.entity(last_click).despawn_recursive();
         }
+
+        interaction_animation_event_writer.send(InteractionAnimationEvent {
+            x: world_position.x,
+            y: world_position.y,
+        });
         let mut scored = false;
         let mut colors = Vec::new();
         for (transform, puzzle_color) in object_query.iter_mut() {
@@ -161,7 +167,7 @@ pub fn render_game_history(
 
     let shape_clicked_position =  shapes::Rectangle {
         extents: Vec2::new(30.0, 30.0),
-        origin: shapes::RectangleOrigin::BottomLeft,
+        origin: shapes::RectangleOrigin::Center ,
     };
 
     commands .spawn(( 
