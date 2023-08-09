@@ -174,8 +174,32 @@ impl ColorPuzzle {
         let mut rng = rand::thread_rng();
 
         let mut colors = vec![];
+        let predominate_color = rng.gen_range(0..4);
+        let mut red = rng.gen_range(0.0..0.7);
+        let mut green = rng.gen_range(0.0..0.7);
+        let mut blue = rng.gen_range(0.0..0.7);
 
-        let correct_color = Color::rgb(rng.gen(), rng.gen(), rng.gen());
+        match predominate_color {
+            0 => {
+                green = rng.gen_range(0.0..0.65);
+                blue = rng.gen_range(0.0..0.65);
+            },
+            1 => {
+                red = rng.gen_range(0.0..0.65);
+                blue = rng.gen_range(0.0..0.65);
+            },
+            2 => {
+                green = rng.gen_range(0.0..0.65);
+                red = rng.gen_range(0.0..0.65);
+            },
+            _ => {
+                red = rng.gen_range(0.0..0.7);
+                green = rng.gen_range(0.0..0.7);
+                blue = rng.gen_range(0.0..0.7);
+            }
+        }
+
+        let correct_color = Color::rgb(red, green, blue);
 
         colors.push(correct_color);
 
@@ -184,11 +208,13 @@ impl ColorPuzzle {
             
             
 
-            let color_variation = rng.gen_range(0.0..0.1);
+            let red_variation = rng.gen_range(0.0..0.1);
+            let green_variation = rng.gen_range(0.0..0.1);
+            let blue_variation = rng.gen_range(0.0..0.1);
 
-            color.set_r( color.r() + color_variation);
-            color.set_g( color.g() + color_variation);
-            color.set_b( color.b() + color_variation);
+            color.set_r( color.r() + red_variation);
+            color.set_g( color.g() + green_variation);
+            color.set_b( color.b() + blue_variation);
             
 
             colors.push(color);
