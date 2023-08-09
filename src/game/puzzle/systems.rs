@@ -282,7 +282,7 @@ pub fn render_remaining_time(
     if game_timer.timer.finished() {
         game_history.set_game_mode(puzzle.game_mode);
         game_history.set_total_time(game_timer.timer.duration().as_secs_f32());
-        app_state_next_state.set(crate::AppState::GameOver);
+        app_state_next_state.set(crate::AppState::GameOverResume);
     }
   
 }
