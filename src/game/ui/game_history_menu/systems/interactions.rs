@@ -7,20 +7,30 @@ use crate::game::ui::game_history_menu::components::*;
 use crate::game::ui::game_history_menu::styles::*;
 use crate::game::ui::game_history_menu::SpawnPaginationEvent;
 use crate::AppState;
+use crate::events::TransitionToStateEvent;
 
 pub fn interact_with_level_history_option(
     mut button_query: Query<(&Interaction, &LevelHistoryOption),(Changed<Interaction>, With<LevelHistoryOption>)>,
     mut render_level_history_event_writer: EventWriter<RenderLevelHistoryEvent>,
+    mut transition_to_state_event_writer: EventWriter<TransitionToStateEvent>,
     mut app_state_next_state: ResMut<NextState<AppState>>,
 ) {
 
     for (interaction, level_history_option) in button_query.iter_mut() {
         match *interaction {
             Interaction::Clicked => {
+                app_state_next_state.set(AppState::LevelHistory);
+                
+                transition_to_state_event_writer.send(TransitionToStateEvent {
+                    state: AppState::LevelHistory,
+                });
+
                 render_level_history_event_writer.send(RenderLevelHistoryEvent {
                     index : level_history_option.index
                 });
-                app_state_next_state.set(AppState::LevelHistory);
+                
+                
+                
             }, 
             _ => {}
         }
@@ -54,6 +64,7 @@ pub fn interact_with_continue_button(
         (&Interaction, &mut BackgroundColor),
         (Changed<Interaction>, With<ContinueButton>),
     >,
+    mut transition_to_state_event_writer: EventWriter<TransitionToStateEvent>,
     mut app_state_next_state: ResMut<NextState<AppState>>,
     game_timer : Res<GameTimer>,
 ) {
@@ -62,8 +73,14 @@ pub fn interact_with_continue_button(
             Interaction::Clicked => {
                 *color = PRESSED_BUTTON.into();
                 if game_timer.timer.finished() {
+                    transition_to_state_event_writer.send(TransitionToStateEvent {
+                        state: AppState::GameOver,
+                    });
                     app_state_next_state.set(AppState::GameOver);
                 } else {
+                    transition_to_state_event_writer.send(TransitionToStateEvent {
+                        state: AppState::Game,
+                    });
                     app_state_next_state.set(AppState::Game);
                 }
 

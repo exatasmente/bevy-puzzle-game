@@ -22,7 +22,7 @@ pub const GAME_OVER_MENU_CONTAINER_STYLE: Style = Style {
     align_items: AlignItems::Center,
     align_content: AlignContent::Center,
     align_self: AlignSelf::Center, 
-    size: Size::new(Val::Percent(80.), Val::Percent(80.)),
+    size: Size::new(Val::Percent(100.), Val::Percent(100.)),
     gap: Size::new(Val::Px(8.0), Val::Px(8.0)),
     ..Style::DEFAULT
 };
@@ -30,7 +30,7 @@ pub const GAME_OVER_MENU_CONTAINER_STYLE: Style = Style {
 pub const GAME_OVER_TEXT_STYLE : Style = Style {
     display: Display::Flex,
     flex_direction: FlexDirection::Row,
-    size: Size::new(Val::Percent(40.0), Val::Px(70.0)),
+    size: Size::new(Val::Percent(50.0), Val::Px(70.0)),
     margin: UiRect::all(Val::Px(2.0)),
     justify_content: JustifyContent::Center,
     align_items: AlignItems::Center,
@@ -40,7 +40,7 @@ pub const GAME_OVER_TEXT_STYLE : Style = Style {
 pub const GAME_OVER_RESUME_TEXT_STYLE : Style = Style {
     display: Display::Flex,
     flex_direction: FlexDirection::Row,
-    size: Size::new(Val::Percent(40.0), Val::Px(40.0)),
+    size: Size::new(Val::Percent(50.0), Val::Px(40.0)),
     margin: UiRect::all(Val::Px(2.0)),
     justify_content: JustifyContent::Center,
     align_items: AlignItems::Center,
@@ -69,7 +69,7 @@ pub fn get_title_text_style(asset_server: &Res<AssetServer>) -> TextStyle {
 pub fn get_resume_text_style(asset_server: &Res<AssetServer>) -> TextStyle {
     TextStyle {
         font: asset_server.load("digital7mono.ttf"),
-        font_size: 12.0,
+        font_size: 10.0,
         color: Color::rgb(1.0, 1.0, 1.0),
     }
 }

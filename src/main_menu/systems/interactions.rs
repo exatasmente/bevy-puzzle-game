@@ -5,7 +5,7 @@ use crate::game::puzzle::components::ColorPuzzle;
 use crate::game::puzzle::components::GameHistory;
 use crate::main_menu::components::*;
 use crate::pagination::Pagination;
-
+use crate::events::TransitionToStateEvent;
 use crate::main_menu::styles::{HOVERED_BUTTON_COLOR, NORMAL_BUTTON_COLOR, PRESSED_BUTTON_COLOR};
 use crate::AppState;
 
@@ -15,6 +15,7 @@ pub fn interact_with_play_button(
         (Changed<Interaction>, With<PlayButton>),
     >,
     mut app_state_next_state: ResMut<NextState<AppState>>,
+    mut transition_to_state_event_writer: EventWriter<TransitionToStateEvent>,
     mut puzzle : ResMut<ColorPuzzle>,
     mut game_history : ResMut<GameHistory>,
     mut pagination : ResMut<Pagination>,
@@ -26,7 +27,13 @@ pub fn interact_with_play_button(
                 puzzle.setup(&play_button.game_mode);
                 game_history.reset();
                 pagination.reset();
+                transition_to_state_event_writer.send(TransitionToStateEvent {
+                    state: AppState::Game,
+                });
+
                 app_state_next_state.set(AppState::Game);
+
+
             }
             Interaction::Hovered => {
                 *background_color = HOVERED_BUTTON_COLOR.into();
