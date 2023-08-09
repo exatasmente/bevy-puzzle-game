@@ -35,18 +35,6 @@ pub fn build_game_over_menu(
                 background_color: BACKGROUND_COLOR.into(),
                 ..default()
             }).with_children(|parent| {
-                parent.spawn(TextBundle {
-                    style: GAME_OVER_TEXT_STYLE,
-                    text: Text {
-                        sections: vec![TextSection::new(
-                            "Fim de Jogo",
-                            get_title_text_style(&asset_server),
-                        )],
-                        ..default()
-                    },
-                    ..default()
-                });
-              
 
                 let labels =  vec![
                     format!("DESAFIOS JOGADOS  {}", game_history.levels_played),
@@ -146,3 +134,58 @@ pub fn despawn_game_over_menu(
     }
 }
 
+pub fn spawn_resume_screen(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+) {
+    commands
+        .spawn((
+            ButtonBundle {
+                style: GAME_OVER_MENU_STYLE,
+                z_index: ZIndex::Local(2), // See Ref. 1
+                ..default()
+            },
+            GameOverMenu {},
+        ))
+        .with_children(|parent| {
+            parent.spawn(NodeBundle {
+                style: GAME_OVER_MENU_CONTAINER_STYLE,
+                background_color: BACKGROUND_COLOR.into(),
+                ..default()
+            }).with_children(|parent| {
+                parent.spawn(TextBundle {
+                    style: GAME_OVER_TEXT_STYLE,
+                    text: Text {
+                        sections: vec![TextSection::new(
+                            "Fim de Jogo",
+                            get_title_text_style(&asset_server),
+                        ),],
+                        ..default()
+                    },
+                    ..default()
+                });
+
+                parent.spawn(TextBundle {
+                    style: GAME_OVER_TEXT_STYLE,
+                    text: Text {
+                        sections: vec![TextSection::new(
+                            "Pressione para continuar",
+                            get_resume_text_style(&asset_server),
+                        ),],
+                        ..default()
+                    },
+                    ..default()
+                });
+            });
+        });
+
+}
+
+pub fn despawn_resume_screen(
+    mut commands: Commands,
+    game_over_menu_query: Query<Entity, With<GameOverMenu>>,
+) {
+    if let Ok(game_over_menu_entity) = game_over_menu_query.get_single() {
+        commands.entity(game_over_menu_entity).despawn_recursive();
+    }
+}

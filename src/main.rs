@@ -67,5 +67,6 @@ pub enum AppState {
     Paused,
     LevelHistory,
     History,
+    GameOverResume,
     GameOver,
 }
