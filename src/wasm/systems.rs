@@ -14,7 +14,7 @@ pub fn transition_to_state(
 
     let event = event.unwrap();
 
-    app_state_next_state.set(event.state);
+    app_state_next_state.set(event.state);    
 
     
 }

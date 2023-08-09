@@ -350,11 +350,14 @@ impl GameHistory {
         self.levels_played += 1;
         
         if level.scored {
-            self.max_streak = self.max_streak.max(self.current_streak);
             self.current_streak += 1;
             self.total_score += 1;
         } else {
             self.current_streak = 0;
+        }
+
+        if self.current_streak > self.max_streak {
+            self.max_streak = self.current_streak;
         }
 
 

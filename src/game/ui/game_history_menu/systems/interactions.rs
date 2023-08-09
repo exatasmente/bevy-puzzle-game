@@ -13,14 +13,11 @@ pub fn interact_with_level_history_option(
     mut button_query: Query<(&Interaction, &LevelHistoryOption),(Changed<Interaction>, With<LevelHistoryOption>)>,
     mut render_level_history_event_writer: EventWriter<RenderLevelHistoryEvent>,
     mut transition_to_state_event_writer: EventWriter<TransitionToStateEvent>,
-    mut app_state_next_state: ResMut<NextState<AppState>>,
 ) {
 
     for (interaction, level_history_option) in button_query.iter_mut() {
         match *interaction {
             Interaction::Clicked => {
-                app_state_next_state.set(AppState::LevelHistory);
-                
                 transition_to_state_event_writer.send(TransitionToStateEvent {
                     state: AppState::LevelHistory,
                 });
@@ -65,7 +62,6 @@ pub fn interact_with_continue_button(
         (Changed<Interaction>, With<ContinueButton>),
     >,
     mut transition_to_state_event_writer: EventWriter<TransitionToStateEvent>,
-    mut app_state_next_state: ResMut<NextState<AppState>>,
     game_timer : Res<GameTimer>,
 ) {
     for (interaction, mut color) in button_query.iter_mut() {
@@ -76,12 +72,10 @@ pub fn interact_with_continue_button(
                     transition_to_state_event_writer.send(TransitionToStateEvent {
                         state: AppState::GameOver,
                     });
-                    app_state_next_state.set(AppState::GameOver);
                 } else {
                     transition_to_state_event_writer.send(TransitionToStateEvent {
                         state: AppState::Game,
                     });
-                    app_state_next_state.set(AppState::Game);
                 }
 
             }

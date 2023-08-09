@@ -29,7 +29,7 @@ pub const GAME_OVER_MENU_CONTAINER_STYLE: Style = Style {
 
 pub const GAME_OVER_TEXT_STYLE : Style = Style {
     display: Display::Flex,
-    flex_direction: FlexDirection::Row,
+    flex_direction: FlexDirection::Column,
     size: Size::new(Val::Percent(50.0), Val::Px(70.0)),
     margin: UiRect::all(Val::Px(2.0)),
     justify_content: JustifyContent::Center,
@@ -39,7 +39,7 @@ pub const GAME_OVER_TEXT_STYLE : Style = Style {
 
 pub const GAME_OVER_RESUME_TEXT_STYLE : Style = Style {
     display: Display::Flex,
-    flex_direction: FlexDirection::Row,
+    flex_direction: FlexDirection::Column,
     size: Size::new(Val::Percent(50.0), Val::Px(40.0)),
     margin: UiRect::all(Val::Px(2.0)),
     justify_content: JustifyContent::Center,

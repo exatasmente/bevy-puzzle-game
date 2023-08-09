@@ -40,7 +40,7 @@ fn main() {
         .add_system(exit_game)
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
-                present_mode : PresentMode::AutoVsync,
+                present_mode : PresentMode::AutoNoVsync,
                 title: "PUZZLE".into(),
                 canvas : Some("#canvas".into()),
                 prevent_default_event_handling: false,
@@ -49,7 +49,7 @@ fn main() {
                     min_width : 320.,
                     min_height : 480.,
                     max_width : 1080.,
-                    max_height : 4096.,
+                    max_height : 3046.,
                 },
                 ..default()
             }),

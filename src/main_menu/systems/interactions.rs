@@ -14,7 +14,6 @@ pub fn interact_with_play_button(
         (&Interaction, &mut BackgroundColor, &PlayButton),
         (Changed<Interaction>, With<PlayButton>),
     >,
-    mut app_state_next_state: ResMut<NextState<AppState>>,
     mut transition_to_state_event_writer: EventWriter<TransitionToStateEvent>,
     mut puzzle : ResMut<ColorPuzzle>,
     mut game_history : ResMut<GameHistory>,
@@ -30,10 +29,6 @@ pub fn interact_with_play_button(
                 transition_to_state_event_writer.send(TransitionToStateEvent {
                     state: AppState::Game,
                 });
-
-                app_state_next_state.set(AppState::Game);
-
-
             }
             Interaction::Hovered => {
                 *background_color = HOVERED_BUTTON_COLOR.into();
