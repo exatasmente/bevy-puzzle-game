@@ -1,0 +1,80 @@
+name: Build and Deploy WebAssembly
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build WebAssembly
+        run: |
+          cargo build \
+            --release \
+            --target wasm32-unknown-unknown
+
+      - name: Install wasm-bindgen
+        run: |
+          cargo install wasm-bindgen-cli --version 0.2.87 --locked
+
+      - name: Generate JavaScript bindings
+        run: |
+          wasm-bindgen \
+            --target web \
+            --out-dir dist \
+            --out-name puzzle_wasm \
+            target/wasm32-unknown-unknown/release/bevy-tetris.wasm
+
+      - name: Copy web files
+        run: |
+          cp docs/index.html dist/index.html
+          cp -r assets dist/assets
+
+      - name: Add .nojekyll
+        run: |
+          touch dist/.nojekyll
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
