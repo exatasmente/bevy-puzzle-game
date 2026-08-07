@@ -22,7 +22,8 @@ wasm-bindgen = "0.2.87"
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 web-sys = { version = "0.3", features = ["Window", "Storage"] }
 
-
+uuid = { version = "1", features = ["js"] }
+getrandom = { version = "0.2", features = ["js"] }
 # Enable only a small amount of optimization in debug mode
 [profile.dev]
 opt-level = 1
