@@ -14,7 +14,9 @@ impl Default for Pagination {
         Self {
             current_page: 0,
             max_page: 0,
-            items_per_page: 5,
+            // Four rows plus the title, pager and two action buttons is what
+            // fits on a 480px-tall phone without clipping.
+            items_per_page: 4,
             entity: None,
         }
     }
@@ -58,10 +60,9 @@ impl Pagination {
         self.entity = None;
     }
 
+    /// Restores the initial state. Defined in terms of `Default` so the page
+    /// size cannot drift away from it.
     pub fn reset(&mut self) {
-        self.current_page = 0;
-        self.max_page = 0;
-        self.items_per_page = 5;
-        self.entity = None;
+        *self = Self::default();
     }
 }

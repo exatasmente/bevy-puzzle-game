@@ -1,0 +1,6 @@
+# Cargo reads runner configuration from here, not from Cargo.toml. The
+# equivalent key in the manifest was silently ignored ("unused manifest key"),
+# so `cargo run --target wasm32-unknown-unknown` never actually started a
+# server.
+[target.wasm32-unknown-unknown]
+runner = "wasm-server-runner"

@@ -1,37 +1,53 @@
 use bevy::prelude::*;
 
-pub const BACKGROUND_COLOR: Color = Color::rgba(0.25, 0.25, 0.25, 0.5);
+use crate::theme;
 
-pub const NORMAL_BUTTON: Color = Color::rgb(0.15, 0.15, 0.15);
-pub const TRANSPARENT_BUTTON: Color = Color::rgba(0.0, 0.0, 0.0, 0.0);
-pub const HOVERED_BUTTON: Color = Color::rgb(0.25, 0.25, 0.25);
-pub const PRESSED_BUTTON: Color = Color::rgb(0.35, 0.75, 0.35);
+pub use crate::theme::{BUTTON, BUTTON_HOVERED, BUTTON_PRESSED, SCRIM, SURFACE};
 
-pub const GAME_OVER_MENU_STYLE: Style = Style {
-    position_type: PositionType::Absolute, // Needed to display separately from HUD.
-    display: Display::Flex,                // Hidden by Default
+pub const HISTORY_MENU_STYLE: Style = Style {
+    position_type: PositionType::Absolute,
+    display: Display::Flex,
     justify_content: JustifyContent::Center,
-    align_items: AlignItems::Center,    
+    align_items: AlignItems::Center,
     size: Size::new(Val::Percent(100.0), Val::Percent(100.0)),
     ..Style::DEFAULT
 };
 
-pub const GAME_OVER_MENU_CONTAINER_STYLE: Style = Style {
+pub const HISTORY_MENU_CONTAINER_STYLE: Style = Style {
     display: Display::Flex,
     flex_direction: FlexDirection::Column,
     justify_content: JustifyContent::Center,
     align_items: AlignItems::Center,
-    size: Size::new(Val::Percent(100.), Val::Percent(100.)),
-    gap: Size::new(Val::Px(8.0), Val::Px(8.0)),
+    size: Size::new(Val::Percent(100.0), Val::Percent(100.0)),
+    padding: UiRect::all(Val::Px(theme::SPACE_MD)),
+    gap: Size::new(Val::Px(theme::SPACE_XS), Val::Px(theme::SPACE_XS)),
     ..Style::DEFAULT
 };
 
+/// One past round: swatch, label, outcome.
+pub const HISTORY_CARD_STYLE: Style = Style {
+    flex_direction: FlexDirection::Row,
+    justify_content: JustifyContent::SpaceBetween,
+    align_items: AlignItems::Center,
+    size: Size::new(Val::Percent(88.0), Val::Px(theme::TOUCH_TARGET)),
+    max_size: Size::new(Val::Px(420.0), Val::Auto),
+    padding: UiRect::all(Val::Px(theme::SPACE_SM)),
+    margin: UiRect::all(Val::Px(theme::SPACE_XS)),
+    ..Style::DEFAULT
+};
 
-pub const BUTTON_HISTORY_STYLE: Style = Style {
-    size: Size::new(Val::Percent(50.), Val::Px(80.0)),
-    margin: UiRect::all(Val::Px(10.0)),
+/// The color the round was actually asking for.
+pub const SWATCH_STYLE: Style = Style {
+    size: Size::new(Val::Px(32.0), Val::Px(32.0)),
+    ..Style::DEFAULT
+};
+
+pub const BUTTON_STYLE: Style = Style {
+    size: Size::new(Val::Percent(88.0), Val::Px(theme::TOUCH_TARGET)),
+    max_size: Size::new(Val::Px(420.0), Val::Auto),
     justify_content: JustifyContent::Center,
     align_items: AlignItems::Center,
+    margin: UiRect::all(Val::Px(theme::SPACE_XS)),
     ..Style::DEFAULT
 };
 
@@ -40,43 +56,31 @@ pub const PAGINATION_CONTAINER_STYLE: Style = Style {
     flex_direction: FlexDirection::Row,
     justify_content: JustifyContent::Center,
     align_items: AlignItems::Center,
-    size: Size::new(Val::Percent(100.), Val::Px(100.)),
-    gap: Size::new(Val::Px(8.0), Val::Px(8.0)),
-    margin: UiRect::all(Val::Px(10.0)),
+    size: Size::new(Val::Percent(88.0), Val::Px(theme::TOUCH_TARGET)),
+    gap: Size::new(Val::Px(theme::SPACE_SM), Val::Px(theme::SPACE_SM)),
+    margin: UiRect::all(Val::Px(theme::SPACE_XS)),
     ..Style::DEFAULT
 };
 
 pub const BUTTON_PAGINATION_STYLE: Style = Style {
-    size: Size::new(Val::Px(60.0), Val::Px(60.0)),
-    display: Display::Flex,
-    flex_direction: FlexDirection::Column,
-    margin: UiRect::all(Val::Px(4.0)),
+    size: Size::new(Val::Px(theme::TOUCH_TARGET), Val::Px(theme::TOUCH_TARGET)),
     justify_content: JustifyContent::Center,
     align_items: AlignItems::Center,
     ..Style::DEFAULT
 };
 
-pub const PAGINATION_TEXT_STYLE: Style = Style {
-    display: Display::Flex,
-    flex_direction : FlexDirection::Row,
-    justify_content: JustifyContent::Center,
-    align_items: AlignItems::Center,
-    ..Style::DEFAULT
-};
-
-pub fn get_button_text_style(asset_server: &Res<AssetServer>,) -> TextStyle {
-    TextStyle {
-        font: asset_server.load("digital7mono.ttf"),
-        font_size: 12.0,
-        color: Color::rgb(1.0, 1.0, 1.0),
-    }
+pub fn get_title_text_style(asset_server: &Res<AssetServer>) -> TextStyle {
+    theme::text_title(asset_server)
 }
 
+pub fn get_button_text_style(asset_server: &Res<AssetServer>) -> TextStyle {
+    theme::text_button(asset_server)
+}
 
-pub fn get_pagination_button_text_style(asset_server: &Res<AssetServer>,) -> TextStyle {
-    TextStyle {
-        font: asset_server.load("digital7mono.ttf"),
-        font_size: 20.0,
-        color: Color::rgb(1.0, 1.0, 1.0),
-    }
+pub fn get_label_text_style(asset_server: &Res<AssetServer>) -> TextStyle {
+    theme::text_label(asset_server)
+}
+
+pub fn get_pagination_button_text_style(asset_server: &Res<AssetServer>) -> TextStyle {
+    theme::text(asset_server, theme::TEXT_MD, theme::ON_SURFACE)
 }

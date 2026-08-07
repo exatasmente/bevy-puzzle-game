@@ -16,6 +16,12 @@ bevy_prototype_lyon = "0.8.0"
 bevy-inspector-egui = "0.18"
 wasm-bindgen = "0.2.87"
 
+# Browser-only. Used for localStorage, which is where best scores persist for
+# the build people actually play (GitHub Pages). Native builds keep bests in
+# memory for the session and never pull this in.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+web-sys = { version = "0.3", features = ["Window", "Storage"] }
+
 
 # Enable only a small amount of optimization in debug mode
 [profile.dev]
@@ -27,7 +33,4 @@ opt-level = 3
 
 [profile.release]
 opt-level = 's'
-
-[target.wasm32-unknown-unknown]
-runner = "wasm-server-runner"
 

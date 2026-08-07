@@ -18,8 +18,14 @@ use pagination::*;
 mod wasm;
 use wasm::*;
 
+mod feedback;
+use feedback::*;
+
 mod interaction_animation;
 use interaction_animation::*;
+
+mod storage;
+mod theme;
 
 pub const PIXELS_PER_METER: f32 = 492.3;
 pub const RESOLUTION: f32 = 16.0 / 9.0;
@@ -34,8 +40,9 @@ fn main() {
         .add_plugin(MainMenuPlugin)
         .add_plugin(GamePlugin)
         .add_plugin(WasmPlugin)
+        .add_plugin(FeedbackPlugin)
         .add_plugin(InteractionAnimationPlugin)
-        
+
         // Startup Systems
         .add_startup_system(spawn_camera)
         // Systems

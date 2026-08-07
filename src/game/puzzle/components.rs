@@ -50,10 +50,35 @@ impl GameMode {
 
     pub fn as_str(&self) -> &'static str {
         match self {
-            GameMode::Infinite => "Infinto",
+            GameMode::Infinite => "Infinito",
             GameMode::AgainstTheClock => "Contra o Tempo",
             GameMode::TimeTrial => "Soma de Tempo",
         }
+    }
+
+    /// One line telling the player what they are choosing, so the mode select
+    /// is an informed choice rather than three unlabelled doors.
+    pub fn description(&self) -> &'static str {
+        match self {
+            GameMode::Infinite => "Sem tempo. Jogue no seu ritmo.",
+            GameMode::AgainstTheClock => "60 segundos. Marque o maximo que puder.",
+            GameMode::TimeTrial => "30 segundos. Cada acerto soma 3s.",
+        }
+    }
+
+    /// Stable key for persisted best scores. Never change these strings without
+    /// migrating stored values.
+    pub fn storage_key(&self) -> &'static str {
+        match self {
+            GameMode::Infinite => "infinite",
+            GameMode::AgainstTheClock => "against_the_clock",
+            GameMode::TimeTrial => "time_trial",
+        }
+    }
+
+    /// Whether a run in this mode can ever end on its own.
+    pub fn is_timed(&self) -> bool {
+        !matches!(self, GameMode::Infinite)
     }
 }
 
@@ -64,9 +89,7 @@ pub struct ColorPuzzle {
     current_colors: Vec<Color>,
     correct_color_index: usize,
     pub game_mode: GameMode,
-    pub difficulty: usize,
     pub seconds_added_per_success: f32,
-    pub objects_per_difficulty: usize,
     pub shape_size: f32,
     pub start_seconds: f32,
     pub transition_seconds: f32,
@@ -83,15 +106,75 @@ impl Default for ColorPuzzle {
     }
 }
 
-pub fn score_to_increase_difficulty_formula(score: usize) -> usize {
-    match score {
-        0..=5 => 2,
-        6..=10 => 3,
-        11..=30 => 4,
-        31..=50 => 5,
-        51..=60 => 6,
-        _ => 7,
+/// Whether two colors are the same square on screen.
+///
+/// The puzzle identifies the target by color rather than by entity, so this is
+/// the definition of "you picked the right one".
+pub fn colors_match(a: Color, b: Color) -> bool {
+    a.r() == b.r() && a.g() == b.g() && a.b() == b.b() && a.a() == b.a()
+}
+
+/// Celebration text for a streak length, if that length deserves one.
+///
+/// Milestones are spaced out on purpose. Praise on every second pick stops
+/// being information and becomes noise the player learns to ignore.
+pub fn streak_milestone_label(streak: usize) -> Option<&'static str> {
+    match streak {
+        3 => Some("SEQUENCIA x3"),
+        5 => Some("EM CHAMAS!"),
+        10 => Some("IMPARAVEL!"),
+        15 => Some("LENDARIO!"),
+        other if other > 15 && other % 10 == 0 => Some("INACREDITAVEL!"),
+        _ => None,
     }
+}
+
+/// Score at which each level begins. Index 0 is level 1.
+///
+/// Deliberately front-loaded: the first level up lands after five points, while
+/// the player is still deciding whether this game is worth their attention. The
+/// gaps widen after that so later levels stay meaningful.
+const LEVEL_START_SCORES: [usize; 9] = [0, 5, 11, 20, 32, 47, 65, 86, 110];
+
+/// Smallest and largest number of squares on screen.
+const MIN_COLORS: usize = 4;
+const MAX_COLORS: usize = 12;
+
+/// 1-based level for a score.
+pub fn level_for_score(score: usize) -> usize {
+    LEVEL_START_SCORES
+        .iter()
+        .rposition(|start| score >= *start)
+        .unwrap_or(0)
+        + 1
+}
+
+/// Score at which `level` begins. Levels past the table clamp to the last entry.
+pub fn score_for_level(level: usize) -> usize {
+    let index = level.saturating_sub(1).min(LEVEL_START_SCORES.len() - 1);
+    LEVEL_START_SCORES[index]
+}
+
+pub fn max_level() -> usize {
+    LEVEL_START_SCORES.len()
+}
+
+/// How far apart the distractor colors sit from the target, by level.
+///
+/// This is the main difficulty dial. Previously difficulty came only from
+/// putting *more* squares on screen while the color distance stayed fixed,
+/// which made early jumps feel abrupt and late rounds merely crowded. Narrowing
+/// the distance instead keeps the challenge tracking the player's improving
+/// discrimination — the flow channel — rather than their patience.
+pub fn color_variation_for_level(level: usize) -> f32 {
+    let steps = (level.saturating_sub(1)) as f32;
+    (0.16 - steps * 0.015).max(0.05)
+}
+
+/// Number of squares on screen at a level. Grows one at a time and stops well
+/// before the board turns into a wall of confetti.
+pub fn color_count_for_level(level: usize) -> usize {
+    (MIN_COLORS + level.saturating_sub(1)).min(MAX_COLORS)
 }
 
 
@@ -102,8 +185,6 @@ impl ColorPuzzle {
             current_colors: vec![],
             correct_color_index: 0,
             game_mode: GameMode::TimeTrial,
-            difficulty: 1,
-            objects_per_difficulty: 2,
             seconds_added_per_success: 3.0,
             shape_size: 200.0,
             start_seconds: 60.0,
@@ -173,60 +254,101 @@ impl ColorPuzzle {
     pub fn generate_colors(&mut self) {
         let mut rng = rand::thread_rng();
 
-        let mut colors = vec![];
-        let predominate_color = rng.gen_range(0..4);
-        let mut red = rng.gen_range(0.0..0.7);
-        let mut green = rng.gen_range(0.0..0.7);
-        let mut blue = rng.gen_range(0.0..0.7);
+        let level = self.level();
+        let count = color_count_for_level(level);
+        let variation = color_variation_for_level(level);
+        // Every distractor has to be *visibly* off the base in at least one
+        // channel. Without this floor the random walk can land on a duplicate of
+        // the target, which reads to the player as "I picked the right one and
+        // the game said no" — the fastest way to destroy trust in a color game.
+        let min_delta = (variation * 0.4).max(0.025);
 
-        match predominate_color {
-            0 => {
-                green = rng.gen_range(0.0..0.65);
-                blue = rng.gen_range(0.0..0.65);
-            },
-            1 => {
-                red = rng.gen_range(0.0..0.65);
-                blue = rng.gen_range(0.0..0.65);
-            },
-            2 => {
-                green = rng.gen_range(0.0..0.65);
-                red = rng.gen_range(0.0..0.65);
-            },
-            _ => {
-                red = rng.gen_range(0.0..0.7);
-                green = rng.gen_range(0.0..0.7);
-                blue = rng.gen_range(0.0..0.7);
+        // Keep the base away from the extremes so variation has room to move in
+        // both directions without clamping flattening it back out.
+        let channel = |rng: &mut ThreadRng| rng.gen_range(0.12..0.72);
+        let dominant = rng.gen_range(0..4);
+        let mut red = channel(&mut rng);
+        let mut green = channel(&mut rng);
+        let mut blue = channel(&mut rng);
+
+        // Push one channel up so the round has a recognisable hue instead of
+        // another wash of grey.
+        match dominant {
+            0 => red = rng.gen_range(0.45..0.80),
+            1 => green = rng.gen_range(0.45..0.80),
+            2 => blue = rng.gen_range(0.45..0.80),
+            _ => {}
+        }
+
+        let base_color = Color::rgb(red, green, blue);
+
+        let mut colors = vec![base_color];
+
+        while colors.len() < count {
+            let mut candidate = base_color;
+
+            // Guarantee movement in one channel, then jitter the rest freely.
+            let forced_channel = rng.gen_range(0..3);
+            for index in 0..3 {
+                let magnitude = if index == forced_channel {
+                    rng.gen_range(min_delta..variation.max(min_delta * 1.5))
+                } else {
+                    rng.gen_range(0.0..variation)
+                };
+                // Both directions: if distractors could only get lighter, the
+                // darkest square on screen would be a free tell.
+                let delta = if rng.gen_bool(0.5) { magnitude } else { -magnitude };
+
+                match index {
+                    0 => candidate.set_r((candidate.r() + delta).clamp(0.0, 1.0)),
+                    1 => candidate.set_g((candidate.g() + delta).clamp(0.0, 1.0)),
+                    _ => candidate.set_b((candidate.b() + delta).clamp(0.0, 1.0)),
+                };
             }
+
+            // Exact-equality duplicates would produce two "correct" squares,
+            // since `is_correct_color` compares channels directly.
+            if colors.iter().any(|existing| colors_match(*existing, candidate)) {
+                continue;
+            }
+
+            colors.push(candidate);
         }
 
-        let correct_color = Color::rgb(red, green, blue);
-
-        colors.push(correct_color);
-
-        for _ in 0..self.get_score_color_count() {
-            let mut color = correct_color.clone();
-            
-            
-
-            let red_variation = rng.gen_range(0.0..0.1);
-            let green_variation = rng.gen_range(0.0..0.1);
-            let blue_variation = rng.gen_range(0.0..0.1);
-
-            color.set_r( color.r() + red_variation);
-            color.set_g( color.g() + green_variation);
-            color.set_b( color.b() + blue_variation);
-            
-
-            colors.push(color);
-        }
-
+        self.correct_color_index = rng.gen_range(0..colors.len());
         self.current_colors = colors;
-        self.correct_color_index = rng.gen_range(0..self.get_score_color_count());
-
     }
 
-    pub fn get_score_color_count(&self) -> usize {
-        (self.difficulty * score_to_increase_difficulty_formula(self.score)) * self.objects_per_difficulty
+    /// 1-based difficulty level, derived from the score.
+    pub fn level(&self) -> usize {
+        level_for_score(self.score)
+    }
+
+    /// 0.0..=1.0 toward the next level. Drives the HUD progress bar: a target
+    /// the player can see approaching pulls harder than an invisible one.
+    pub fn progress_to_next_level(&self) -> f32 {
+        let level = self.level();
+        if level >= max_level() {
+            return 1.0;
+        }
+
+        let start = score_for_level(level);
+        let next = score_for_level(level + 1);
+        if next <= start {
+            return 1.0;
+        }
+
+        ((self.score - start) as f32 / (next - start) as f32).clamp(0.0, 1.0)
+    }
+
+    /// Points still needed for the next level, if there is one.
+    pub fn points_to_next_level(&self) -> Option<usize> {
+        let level = self.level();
+        if level >= max_level() {
+            return None;
+        }
+
+        Some(score_for_level(level + 1).saturating_sub(self.score))
     }
 
     pub fn get_color(&self) -> Color {
@@ -237,8 +359,13 @@ impl ColorPuzzle {
         self.score
     }
 
-    pub fn increase_score(&mut self, game_timer : &mut GameTimer) {
+    /// Scores a point. Returns true when that point crossed a level boundary,
+    /// so the caller can celebrate it as its own event rather than folding it
+    /// into the ordinary per-pick feedback.
+    pub fn increase_score(&mut self, game_timer : &mut GameTimer) -> bool {
+        let level_before = self.level();
         self.score += 1;
+        let leveled_up = self.level() > level_before;
 
         match self.game_mode {
             GameMode::TimeTrial => {
@@ -248,6 +375,8 @@ impl ColorPuzzle {
             },
             _ => {}
         }
+
+        leveled_up
     }
 
     pub fn get_seconds_added_per_success(&self) -> f32 {
@@ -255,8 +384,7 @@ impl ColorPuzzle {
     }
 
     pub fn is_correct_color(&self, index : usize) -> bool {
-        let color = self.current_colors[index];
-        color.r() == self.get_color().r() && color.g() == self.get_color().g() && color.b() == self.get_color().b() && color.a() == self.get_color().a()
+        colors_match(self.current_colors[index], self.get_color())
     }
 
     pub fn setup_timer(&mut self) -> Timer {
@@ -368,6 +496,12 @@ impl GameHistory {
         self.game_mode = game_mode;
     }
 
+    /// The run's live streak. Shown in the HUD during play: a streak the player
+    /// can watch is something they can be afraid to lose.
+    pub fn current_streak(&self) -> usize {
+        self.current_streak
+    }
+
     pub fn set_total_time(&mut self, total_time : f32) {
         self.total_time = total_time;
     }
@@ -438,4 +572,50 @@ impl Default for GameHistory {
 #[derive(Resource, Reflect, Debug)]
 pub struct GameTimer {
     pub timer: Timer,
+}
+
+/// Holds the current board in place for a beat after a wrong pick.
+///
+/// Without this the next round is generated in the same frame as the miss, and
+/// the "here was the right answer" outline would be drawn over a board that no
+/// longer exists. The pause is what lets a miss teach something instead of just
+/// costing a point; input stays locked for its duration so the player cannot
+/// pick again into a board that is about to be replaced.
+#[derive(Resource, Default)]
+pub struct PendingLevelStart {
+    timer: Option<Timer>,
+}
+
+impl PendingLevelStart {
+    /// How long the missed board stays up. Long enough to look at, short enough
+    /// not to feel like a penalty.
+    const HOLD_SECONDS: f32 = 0.7;
+
+    pub fn hold(&mut self) {
+        self.timer = Some(Timer::from_seconds(Self::HOLD_SECONDS, TimerMode::Once));
+    }
+
+    pub fn is_holding(&self) -> bool {
+        self.timer.is_some()
+    }
+
+    /// Advances the hold. Returns true on the frame it ends.
+    pub fn tick(&mut self, delta: std::time::Duration) -> bool {
+        let Some(timer) = self.timer.as_mut() else {
+            return false;
+        };
+
+        timer.tick(delta);
+
+        if timer.finished() {
+            self.timer = None;
+            return true;
+        }
+
+        false
+    }
+
+    pub fn clear(&mut self) {
+        self.timer = None;
+    }
 }
