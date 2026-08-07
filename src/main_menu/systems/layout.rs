@@ -1,75 +1,106 @@
 use bevy::prelude::*;
 
-use crate::main_menu::components::*;
 use crate::game::puzzle::components::GameMode;
+use crate::game::score::resources::BestScores;
+use crate::main_menu::components::*;
 use crate::main_menu::styles::*;
 
-pub fn spawn_main_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
-    build_main_menu(&mut commands, &asset_server);
+pub fn spawn_main_menu(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    best_scores: Res<BestScores>,
+) {
+    build_main_menu(&mut commands, &asset_server, &best_scores);
 }
 
 pub fn despawn_main_menu(mut commands: Commands, main_menu_query: Query<Entity, With<MainMenu>>) {
-    if let Ok(main_menu_entity) = main_menu_query.get_single() {
-        commands.entity(main_menu_entity).despawn_recursive();
+    for entity in main_menu_query.iter() {
+        commands.entity(entity).despawn_recursive();
     }
 }
 
-pub fn build_main_menu(commands: &mut Commands, asset_server: &Res<AssetServer>) -> Entity {
-    let main_menu_entity = commands
+pub fn build_main_menu(
+    commands: &mut Commands,
+    asset_server: &Res<AssetServer>,
+    best_scores: &Res<BestScores>,
+) -> Entity {
+    commands
         .spawn((
             NodeBundle {
                 style: MAIN_MENU_STYLE,
                 ..default()
             },
-            MainMenu {},
+            MainMenu,
         ))
         .with_children(|parent| {
-            // === Title ===
             parent
                 .spawn(NodeBundle {
                     style: TITLE_STYLE,
                     ..default()
                 })
                 .with_children(|parent| {
-                    // Text
                     parent.spawn(TextBundle {
-                        text: Text {
-                            sections: vec![TextSection::new(
-                                "Color Puzzle",
-                                get_title_text_style(&asset_server),
-                            )],
-                            alignment: TextAlignment::Center,
-                            ..default()
-                        },
+                        text: Text::from_section(
+                            "COLOR PUZZLE",
+                            get_title_text_style(asset_server),
+                        )
+                        .with_alignment(TextAlignment::Center),
+                        ..default()
+                    });
+                    parent.spawn(TextBundle {
+                        text: Text::from_section(
+                            "ACHE A COR IGUAL AO FUNDO",
+                            get_mode_description_text_style(asset_server),
+                        )
+                        .with_alignment(TextAlignment::Center),
                         ..default()
                     });
                 });
+
             for game_mode in GameMode::iter() {
                 parent
                     .spawn((
                         ButtonBundle {
-                            style: BUTTON_STYLE,
-                            background_color: NORMAL_BUTTON_COLOR.into(),
+                            style: MODE_CARD_STYLE,
+                            background_color: BUTTON.into(),
                             ..default()
                         },
                         PlayButton { game_mode },
                     ))
                     .with_children(|parent| {
                         parent.spawn(TextBundle {
-                            text: Text {
-                                sections: vec![TextSection::new(
-                                    format!("Jogar Modo {}", game_mode.as_str()),
-                                    get_button_text_style(&asset_server),
-                                )],
-                                alignment: TextAlignment::Center,
-                                ..default()
-                            },
+                            text: Text::from_section(
+                                game_mode.as_str().to_uppercase(),
+                                get_mode_name_text_style(asset_server),
+                            )
+                            .with_alignment(TextAlignment::Center),
                             ..default()
                         });
+                        // Say what the mode is before the player commits to it.
+                        parent.spawn(TextBundle {
+                            text: Text::from_section(
+                                game_mode.description(),
+                                get_mode_description_text_style(asset_server),
+                            )
+                            .with_alignment(TextAlignment::Center),
+                            ..default()
+                        });
+
+                        // Show the target before the run rather than only after
+                        // it: the number to beat is what the run is for.
+                        let best = best_scores.get(game_mode);
+                        if best > 0 {
+                            parent.spawn(TextBundle {
+                                text: Text::from_section(
+                                    format!("RECORDE {}", best),
+                                    get_best_score_text_style(asset_server),
+                                )
+                                .with_alignment(TextAlignment::Center),
+                                ..default()
+                            });
+                        }
                     });
             }
         })
-        .id();
-
-    main_menu_entity
+        .id()
 }

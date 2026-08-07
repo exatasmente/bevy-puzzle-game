@@ -1,191 +1,239 @@
+//! The end-of-run screen.
+//!
+//! Ranked so the eye lands in the order that matters: what you scored, whether
+//! it beat your best, the detail behind it, and then the one button that starts
+//! another run. The retry is the primary action because the moment right after
+//! a run ends is the only moment the player is certain to still be here.
+
 use bevy::prelude::*;
 
+use crate::feedback::{PopAnim, RevealIn};
 use crate::game::puzzle::components::GameHistory;
 use crate::game::puzzle::components::GameMode;
+use crate::game::score::resources::LastRunOutcome;
 use crate::game::ui::game_over_menu::components::*;
 use crate::game::ui::game_over_menu::styles::*;
+use crate::theme;
 
 pub fn spawn_game_over_menu(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
-    game_history : Res<GameHistory>,
+    game_history: Res<GameHistory>,
+    outcome: Res<LastRunOutcome>,
 ) {
-    build_game_over_menu(&mut commands, &asset_server, &game_history);
- 
+    build_game_over_menu(&mut commands, &asset_server, &game_history, &outcome);
 }
 
 pub fn build_game_over_menu(
-    commands: &mut Commands, 
-    asset_server : &Res<AssetServer>,
-    game_history : &Res<GameHistory>,
+    commands: &mut Commands,
+    asset_server: &Res<AssetServer>,
+    game_history: &Res<GameHistory>,
+    outcome: &Res<LastRunOutcome>,
 ) -> Entity {
-    let game_over_menu_entity = commands
+    commands
         .spawn((
             NodeBundle {
                 style: GAME_OVER_MENU_STYLE,
-                z_index: ZIndex::Local(2), // See Ref. 1
+                background_color: SCRIM.into(),
+                z_index: ZIndex::Local(2),
                 ..default()
             },
-            GameOverMenu {},
+            GameOverMenu,
         ))
         .with_children(|parent| {
-
-            parent.spawn(NodeBundle {
-                style: GAME_OVER_MENU_CONTAINER_STYLE,
-                background_color: BACKGROUND_COLOR.into(),
-                ..default()
-            }).with_children(|parent| {
-
-                let labels =  vec![
-                    format!("DESAFIOS JOGADOS  {}", game_history.levels_played),
-                    format!("TOTAL DE PONTOS   {}", game_history.total_score),
-                    format!("MAIOR SEQ ACERTOS {}", game_history.max_streak),
-                ];
-
-                for label in labels {
-                    // spawn a text bundle with the text style form game_over_menu_styles method, and the text content "DESAFIOS: {}"
-                    parent.spawn(TextBundle {
-                        style: GAME_OVER_RESUME_TEXT_STYLE,
-                        text: Text {
-                            sections: vec![TextSection::new(
-                                label,
-                                get_resume_text_style(&asset_server),
-                            )],
-                            ..default()
-                        },
-                        ..default()
-                    });
-                }
-                if game_history.game_mode == GameMode::TimeTrial {
-                    parent.spawn(TextBundle {
-                        style: GAME_OVER_RESUME_TEXT_STYLE,
-                        text: Text {
-                            sections: vec![TextSection::new(
-                                format!("TEMPO TOTAL       {}", game_history.get_formatted_time()),
-                                get_resume_text_style(&asset_server),
-                            )],
-                            ..default()
-                        },
-                        ..default()
-                    });
-                }
-              
             parent
-                .spawn((
-                    ButtonBundle {
-                        style: BUTTON_STYLE,
-                        background_color: NORMAL_BUTTON.into(),
-                        ..default()
-                    },
-                    MainMenuButton {},
-                ))
+                .spawn(NodeBundle {
+                    style: GAME_OVER_MENU_CONTAINER_STYLE,
+                    background_color: SURFACE.into(),
+                    ..default()
+                })
                 .with_children(|parent| {
                     parent.spawn(TextBundle {
-                        style: Style { ..default() },
-                        text: Text {
-                            sections: vec![TextSection::new(
-                                "Menu Principal",
-                                get_button_text_style(&asset_server),
-                            )],
-                            alignment: TextAlignment::Center,
-                            ..default()
-                        },
+                        text: Text::from_section("PONTOS", get_label_text_style(asset_server)),
                         ..default()
                     });
-                });
-            parent
-                .spawn((
-                    ButtonBundle {
-                        style: BUTTON_STYLE,
-                        background_color: NORMAL_BUTTON.into(),
+
+                    // The headline number, in the celebration color when it is
+                    // a record so the good news is legible before it is read.
+                    let score_color = if outcome.is_record {
+                        theme::ACCENT
+                    } else {
+                        theme::ON_SURFACE
+                    };
+                    let mut score_text = parent.spawn(TextBundle {
+                        text: Text::from_section(
+                            format!("{}", outcome.score),
+                            theme::text_display(asset_server, score_color),
+                        ),
                         ..default()
-                    },
-                    GameOverHistoryButton {},
-                ))
-                .with_children(|parent| {
+                    });
+                    if outcome.is_record {
+                        // The loudest animation in the game, spent on the rarest
+                        // moment it has.
+                        score_text.insert(PopAnim::large());
+                    }
+
+                    // Either a celebration or a target. Never nothing: an
+                    // end screen with no comparison gives the player no reason
+                    // to go again.
+                    let (record_text, record_color) = if outcome.is_record {
+                        ("NOVO RECORDE!".to_string(), theme::ACCENT)
+                    } else {
+                        (format!("RECORDE {}", outcome.best), theme::MUTED)
+                    };
                     parent.spawn(TextBundle {
-                        style: Style { ..default() },
-                        text: Text {
-                            sections: vec![TextSection::new(
-                                "Ver Historico",
-                                get_button_text_style(&asset_server),
-                            )],
-                            alignment: TextAlignment::Center,
-                            ..default()
-                        },
+                        text: Text::from_section(
+                            record_text,
+                            theme::text(asset_server, theme::TEXT_SM, record_color),
+                        ),
                         ..default()
                     });
+
+                    let mut rows = vec![
+                        ("DESAFIOS", format!("{}", game_history.levels_played)),
+                        ("MAIOR SEQUENCIA", format!("{}", game_history.max_streak)),
+                    ];
+
+                    if game_history.game_mode == GameMode::TimeTrial {
+                        rows.push(("TEMPO TOTAL", game_history.get_formatted_time()));
+                    }
+
+                    for (index, (label, value)) in rows.into_iter().enumerate() {
+                        parent
+                            .spawn(NodeBundle {
+                                style: STAT_ROW_STYLE,
+                                ..default()
+                            })
+                            .with_children(|parent| {
+                                parent.spawn((
+                                    TextBundle {
+                                        text: Text::from_section(
+                                            label,
+                                            get_label_text_style(asset_server),
+                                        ),
+                                        ..default()
+                                    },
+                                    RevealIn::staggered(index),
+                                ));
+                                parent.spawn((
+                                    TextBundle {
+                                        text: Text::from_section(
+                                            value,
+                                            get_resume_text_style(asset_server),
+                                        ),
+                                        ..default()
+                                    },
+                                    RevealIn::staggered(index),
+                                ));
+                            });
+                    }
+
+                    spawn_button(
+                        parent,
+                        asset_server,
+                        "JOGAR NOVAMENTE",
+                        PRIMARY_BUTTON_STYLE,
+                        BUTTON_PRIMARY,
+                        PlayAgainButton,
+                    );
+                    spawn_button(
+                        parent,
+                        asset_server,
+                        "VER HISTORICO",
+                        BUTTON_STYLE,
+                        BUTTON,
+                        GameOverHistoryButton,
+                    );
+                    spawn_button(
+                        parent,
+                        asset_server,
+                        "MENU PRINCIPAL",
+                        BUTTON_STYLE,
+                        BUTTON,
+                        MainMenuButton,
+                    );
                 });
-                
-            });
-           
         })
-        .id();
+        .id()
+}
 
-    game_over_menu_entity
+fn spawn_button<M: Component>(
+    parent: &mut ChildBuilder,
+    asset_server: &Res<AssetServer>,
+    label: &str,
+    style: Style,
+    color: Color,
+    marker: M,
+) {
+    parent
+        .spawn((
+            ButtonBundle {
+                style,
+                background_color: color.into(),
+                ..default()
+            },
+            marker,
+        ))
+        .with_children(|parent| {
+            parent.spawn(TextBundle {
+                text: Text::from_section(label, get_button_text_style(asset_server))
+                    .with_alignment(TextAlignment::Center),
+                ..default()
+            });
+        });
 }
 
 pub fn despawn_game_over_menu(
     mut commands: Commands,
     game_over_menu_query: Query<Entity, With<GameOverMenu>>,
 ) {
-    if let Ok(game_over_menu_entity) = game_over_menu_query.get_single() {
-        commands.entity(game_over_menu_entity).despawn_recursive();
+    for entity in game_over_menu_query.iter() {
+        commands.entity(entity).despawn_recursive();
     }
 }
 
-pub fn spawn_resume_screen(
-    mut commands: Commands,
-    asset_server: Res<AssetServer>,
-) {
+/// The "fim de jogo" interstitial: one tap to continue, nothing to read.
+pub fn spawn_resume_screen(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands
         .spawn((
             ButtonBundle {
                 style: GAME_OVER_MENU_STYLE,
-                z_index: ZIndex::Local(2), // See Ref. 1
+                background_color: SCRIM.into(),
+                z_index: ZIndex::Local(2),
                 ..default()
             },
-            GameOverMenu {},
+            GameOverMenu,
         ))
         .with_children(|parent| {
-            parent.spawn(NodeBundle {
-                style: GAME_OVER_MENU_CONTAINER_STYLE,
-                background_color: BACKGROUND_COLOR.into(),
-                ..default()
-            }).with_children(|parent| {
-                parent.spawn(TextBundle {
-                    style: GAME_OVER_TEXT_STYLE,
-                    text: Text {
-                        sections: vec![TextSection::new(
-                            "Fim de Jogo",
+            parent
+                .spawn(NodeBundle {
+                    style: GAME_OVER_MENU_CONTAINER_STYLE,
+                    ..default()
+                })
+                .with_children(|parent| {
+                    parent.spawn(TextBundle {
+                        text: Text::from_section(
+                            "FIM DE JOGO",
                             get_title_text_style(&asset_server),
-                        ),],
+                        ),
                         ..default()
-                    },
-                    ..default()
-                });
-
-                parent.spawn(TextBundle {
-                    style: GAME_OVER_TEXT_STYLE,
-                    text: Text {
-                        sections: vec![TextSection::new(
-                            "Pressione para continuar",
-                            get_resume_text_style(&asset_server),
-                        ),],
+                    });
+                    parent.spawn(TextBundle {
+                        text: Text::from_section(
+                            "TOQUE PARA CONTINUAR",
+                            theme::text(&asset_server, theme::TEXT_SM, theme::MUTED),
+                        ),
                         ..default()
-                    },
-                    ..default()
+                    });
                 });
-            });
         });
-
 }
 
 pub fn despawn_resume_screen(
     mut commands: Commands,
     game_over_menu_query: Query<Entity, With<GameOverMenu>>,
 ) {
-    if let Ok(game_over_menu_entity) = game_over_menu_query.get_single() {
-        commands.entity(game_over_menu_entity).despawn_recursive();
+    for entity in game_over_menu_query.iter() {
+        commands.entity(entity).despawn_recursive();
     }
 }

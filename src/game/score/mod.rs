@@ -8,20 +8,30 @@ use crate::AppState;
 use resources::*;
 use systems::*;
 
+/// Owns the player's personal bests.
+///
+/// This module existed in the tree but was never declared in `game/mod.rs`, so
+/// none of it compiled. It is now the home of the comparison target that gives
+/// a finished run its meaning.
 pub struct ScorePlugin;
+
+/// Marks the point at which `LastRunOutcome` is valid for this run.
+///
+/// The game-over screen is built on the same state transition, so it orders
+/// itself after this set rather than racing it and rendering the previous run's
+/// numbers.
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct RecordOutcomeSet;
 
 impl Plugin for ScorePlugin {
     fn build(&self, app: &mut App) {
-        app
-            // Resources
-            .init_resource::<HighScores>()
-            // On Enter State
-            .add_system(insert_score.in_schedule(OnEnter(AppState::Game)))
-            // Systems
-            .add_system(update_score.run_if(in_state(AppState::Game)))
-            .add_system(update_high_scores)
-            .add_system(high_scores_updated)
-            // On Exit State
-            .add_system(remove_score.in_schedule(OnExit(AppState::Game)));
+        app.init_resource::<LastRunOutcome>()
+            .init_resource::<BestScores>()
+            .add_startup_system(load_best_scores)
+            .add_system(
+                record_run_outcome
+                    .in_set(RecordOutcomeSet)
+                    .in_schedule(OnEnter(AppState::GameOverResume)),
+            );
     }
 }

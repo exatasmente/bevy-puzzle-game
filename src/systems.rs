@@ -102,7 +102,13 @@ pub fn spawn_camera(
     _texture_atlases: ResMut<Assets<TextureAtlas>>,
 ) {
     let camera_bundle = Camera2dBundle::default();
-    commands.spawn((camera_bundle, BackgroundTranstion::default() ));
+    commands.spawn((
+        camera_bundle,
+        BackgroundTranstion::default(),
+        // Shake lives on the camera next to the background transition; both
+        // write to this entity, but to different parts of it.
+        crate::feedback::ScreenShake::default(),
+    ));
 }
 
 pub fn transition_to_game_state(

@@ -1,33 +1,27 @@
 use bevy::prelude::*;
 
 use super::resources::*;
-use crate::events::GameOver;
+use crate::game::puzzle::components::GameHistory;
 
-pub fn insert_score(mut commands: Commands) {
-    commands.insert_resource(Score::default())
+/// Populates the already-initialised resource rather than inserting it, so no
+/// system can observe a frame where `BestScores` does not exist yet.
+pub fn load_best_scores(mut best_scores: ResMut<BestScores>) {
+    *best_scores = BestScores::load();
 }
 
-pub fn remove_score(mut commands: Commands) {
-    commands.remove_resource::<Score>();
-}
-
-pub fn update_score(score: Res<Score>) {
-    if score.is_changed() {
-        println!("Score: {}", score.value.to_string());
-    }
-}
-
-pub fn update_high_scores(
-    mut game_over_event_reader: EventReader<GameOver>,
-    mut high_scores: ResMut<HighScores>,
+/// Called once as a run ends. Stores the result and works out whether it was a
+/// personal best, so the game-over screen can lead with that.
+pub fn record_run_outcome(
+    game_history: Res<GameHistory>,
+    mut best_scores: ResMut<BestScores>,
+    mut outcome: ResMut<LastRunOutcome>,
 ) {
-    for event in game_over_event_reader.iter() {
-        high_scores.scores.push(("Player".to_string(), event.score));
-    }
-}
+    let score = game_history.total_score;
+    let mode = game_history.game_mode;
 
-pub fn high_scores_updated(high_scores: Res<HighScores>) {
-    if high_scores.is_changed() {
-        println!("High Scores: {:?}", high_scores);
-    }
+    let is_record = best_scores.submit(mode, score);
+
+    outcome.score = score;
+    outcome.best = best_scores.get(mode);
+    outcome.is_record = is_record;
 }

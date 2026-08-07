@@ -2,6 +2,8 @@ use bevy::prelude::*;
 use bevy_prototype_lyon::prelude::*;
 use bevy::core_pipeline::clear_color::ClearColorConfig;
 use crate::events::InteractionAnimationEvent;
+use crate::feedback::BannerEvent;
+use crate::theme;
 use super::components::*;
 use crate::systems::BackgroundTranstion;
 const N_OF_COLS: usize = 6;
@@ -16,17 +18,35 @@ pub fn player_interaction(
     event_click  : Res<Input<MouseButton>>,
     touches: Res<Touches>,
     mut object_query: Query<(&Transform, &PuzzleColor), With<PuzzleColor>>,
+    ui_interaction_query: Query<&Interaction>,
     mut puzzle: ResMut<ColorPuzzle>,
     mut game_timer: ResMut<GameTimer>,
+    mut pending_level_start: ResMut<PendingLevelStart>,
     mut start_level_event_writer: EventWriter<StartLevelEvent>,
     mut last_interraction_event_writer: EventWriter<LastInteractionEvent>,
     mut interaction_animation_event_writer: EventWriter<InteractionAnimationEvent>,
+    mut banner_event_writer: EventWriter<BannerEvent>,
     last_click_query: Query<Entity, With<LastClick>>,
 ) {
 
     let window = windows.single();
     let (camera, camera_transform, background_transtion) = camera_q.single();
-    
+
+    // Tapping a HUD button used to also register as a puzzle pick, which now
+    // means pausing the game would break the player's streak. Ignore world
+    // input whenever the pointer is over any UI element.
+    let pointer_over_ui = ui_interaction_query
+        .iter()
+        .any(|interaction| !matches!(interaction, Interaction::None));
+    if pointer_over_ui {
+        return;
+    }
+
+    // The board is being held so the player can see what they missed.
+    if pending_level_start.is_holding() {
+        return;
+    }
+
     if !background_transtion.is_in_transition() && (event_click.just_released(MouseButton::Left) || touches.any_just_pressed()) {
         let is_touch = touches.first_pressed_position().is_some();
         let world_position;
@@ -44,34 +64,76 @@ pub fn player_interaction(
             commands.entity(last_click).despawn_recursive();
         }
 
-        interaction_animation_event_writer.send(InteractionAnimationEvent {
-            x: world_position.x,
-            y: world_position.y,
-        });
         let mut scored = false;
         let mut colors = Vec::new();
+        let mut correct_position = None;
+
         for (transform, puzzle_color) in object_query.iter_mut() {
             colors.push(puzzle_color.as_level_color());
-            if mouse_hover(transform.translation, world_position, puzzle.shape_size) && puzzle_color.is_correct_color {
-                puzzle.increase_score(&mut game_timer);
 
+            if puzzle_color.is_correct_color {
+                correct_position = Some(Vec2::new(puzzle_color.x, puzzle_color.y));
+            }
+
+            if mouse_hover(transform.translation, world_position, puzzle.shape_size) && puzzle_color.is_correct_color {
                 scored = true;
             }
-        
+        }
 
+        let mut bonus_seconds = 0.0;
+        let mut leveled_up = false;
+
+        if scored {
+            if puzzle.game_mode == GameMode::TimeTrial {
+                bonus_seconds = puzzle.get_seconds_added_per_success();
+            }
+
+            leveled_up = puzzle.increase_score(&mut game_timer);
+        }
+
+        interaction_animation_event_writer.send(InteractionAnimationEvent {
+            position: world_position,
+            scored,
+            bonus_seconds,
+            // Only meaningful on a miss, where it drives the answer reveal.
+            correct_position,
+            shape_size: puzzle.shape_size,
+        });
+
+        if leveled_up {
+            banner_event_writer.send(BannerEvent::large(
+                format!("NIVEL {}", puzzle.level()),
+                theme::ACCENT,
+            ));
         }
 
         last_interraction_event_writer.send(LastInteractionEvent::new(
-            world_position, 
+            world_position,
             puzzle.get_correct_color_index(),
             colors,
             scored,
         ));
-        start_level_event_writer.send(StartLevelEvent);    
 
-            
+        if scored {
+            // Keep the momentum: a correct pick moves straight on.
+            start_level_event_writer.send(StartLevelEvent);
+        } else {
+            // Hold the board so the reveal has something to point at.
+            pending_level_start.hold();
+        }
     }
- 
+
+}
+
+/// Starts the next round once a post-miss hold expires.
+pub fn advance_pending_level(
+    time: Res<Time>,
+    mut pending_level_start: ResMut<PendingLevelStart>,
+    mut start_level_event_writer: EventWriter<StartLevelEvent>,
+) {
+    if pending_level_start.tick(time.delta()) {
+        start_level_event_writer.send(StartLevelEvent);
+    }
 }
 
 
@@ -101,7 +163,7 @@ pub fn render_game_history(
         commands.entity(entity).despawn_recursive();
     }
 
-    
+
     let level_history = game_history.get_level_history(event.index);
     let previous_level_history = game_history.get_previous_level_history(event.index);
     let (mut camera, mut background_transition) = camera_query.single_mut();
@@ -113,9 +175,9 @@ pub fn render_game_history(
     } else {
         background_transition.set_start_color(puzzle.get_color());
     }
-    
+
     background_transition.set_end_color(level_history.get_correct_color());
-    
+
     camera.clear_color = ClearColorConfig::Custom(Color::BLACK);
 
     let shape =  shapes::Rectangle {
@@ -126,9 +188,9 @@ pub fn render_game_history(
     level_history.for_each_color(|index, color| {
         let fill = Fill::color(color.color);
         let is_correct_color = color.is_correct_color;
-        
+
         commands
-            .spawn(( 
+            .spawn((
                 ShapeBundle {
                     path: GeometryBuilder::build_as(&shape),
                     transform: Transform::from_xyz(
@@ -148,7 +210,7 @@ pub fn render_game_history(
                 extents: Vec2::new(puzzle.shape_size - 20.0, puzzle.shape_size - 20.0),
                 origin: shapes::RectangleOrigin::BottomLeft,
             };
-            commands .spawn(( 
+            commands .spawn((
                 ShapeBundle {
                     path: GeometryBuilder::build_as(&inner_shape),
                     transform: Transform::from_xyz(
@@ -170,7 +232,7 @@ pub fn render_game_history(
         origin: shapes::RectangleOrigin::Center ,
     };
 
-    commands .spawn(( 
+    commands .spawn((
         ShapeBundle {
             path: GeometryBuilder::build_as(&shape_clicked_position),
             transform: Transform::from_xyz(
@@ -180,15 +242,16 @@ pub fn render_game_history(
             ),
             ..default()
         },
-        Fill::color(Color::RED),
+        Fill::color(theme::DANGER),
         LastClick,
     ));
-    
+
 }
 
 pub fn store_last_interaction_state(
     mut last_interaction_events: EventReader<LastInteractionEvent>,
     mut game_history: ResMut<GameHistory>,
+    mut banner_event_writer: EventWriter<BannerEvent>,
 ) {
     let level_history =last_interaction_events.iter().next();
 
@@ -199,8 +262,13 @@ pub fn store_last_interaction_state(
     let event = level_history.unwrap();
 
     game_history.add_level(event.level_history());
-    
 
+    // Streaks are the cheapest motivation in the game: the player builds
+    // something they then don't want to lose. Call out the milestones so the
+    // thing they stand to lose is salient while they still have it.
+    if let Some(label) = streak_milestone_label(game_history.current_streak()) {
+        banner_event_writer.send(BannerEvent::new(label, theme::SUCCESS));
+    }
 }
 
 fn mouse_hover(translation: Vec3, delta: Vec2, shape_size : f32) -> bool {
@@ -241,66 +309,36 @@ pub fn background_transition(
 ) {
 
     let (mut camera, mut background_transition) = camera_query.single_mut();
-    
-    if background_transition.is_in_transition() {   
+
+    if background_transition.is_in_transition() {
         camera.clear_color = ClearColorConfig::Custom(background_transition.get_current_color());
         background_transition.update(time.delta_seconds());
     }
 }
 
-#[derive(Component)]
-pub struct RemainingTime;
-
-pub fn render_remaining_time(
-    mut commands: Commands,
-    mut query: Query<&mut Text, With<RemainingTime>>,
-    asset_server: Res<AssetServer>,
+/// Advances the run clock and ends the run when it expires.
+///
+/// This used to also spawn and update the on-screen timer text. That text now
+/// lives in the HUD, where it can be updated in place and animated; this system
+/// is only responsible for time itself.
+pub fn tick_game_timer(
     mut game_timer: ResMut<GameTimer>,
     mut game_history: ResMut<GameHistory>,
     puzzle: Res<ColorPuzzle>,
     mut app_state_next_state: ResMut<NextState<crate::AppState>>,
     time : Res<Time>,
 ) {
-
-    if puzzle.game_mode == GameMode::Infinite {
+    if !puzzle.game_mode.is_timed() {
         return;
     }
 
     game_timer.timer.tick(time.delta());
-    
-    
-    if query.iter_mut().next().is_none() {
-        let font = asset_server.load("digital7mono.ttf");
-        let text_style = TextStyle {
-            font: font.clone(),
-            font_size: 20.0,
-            color: Color::BLACK,
-        };
-        let text_alignment = TextAlignment::Center;
-        commands.spawn((
-            Text2dBundle {
-                text: Text::from_section(format!("Time : {:02.0} ", game_timer.timer.remaining_secs()), text_style.clone())
-                    .with_alignment(text_alignment),
-                    transform: Transform::from_translation(Vec3::new(0.0, (puzzle.get_height() / 2.0) * -1.0, 2.0)),
-                ..default()
-            },
-            RemainingTime,
-            PuzzleColorGame {},
-        ));
 
-        return;
-    }
-
-    let mut text = query.single_mut();
-
-    text.sections[0].value = format!("Time : {:02.0} ", game_timer.timer.remaining_secs());
-    
     if game_timer.timer.finished() {
         game_history.set_game_mode(puzzle.game_mode);
         game_history.set_total_time(game_timer.timer.duration().as_secs_f32());
         app_state_next_state.set(crate::AppState::GameOverResume);
     }
-  
 }
 
 fn cord_is_intersecting(
@@ -310,55 +348,26 @@ fn cord_is_intersecting(
     !(x1 > x4 || x3 > x2 || y1 > y4 || y3 > y2)
 }
 
-#[derive(Component)]
-pub struct ScoreText;
-
 pub fn spawn_objects(
     mut commands: Commands,
     mut object_query: Query<Entity, With<PuzzleColor>>,
-    mut score_query: Query<Entity, With<ScoreText>>,
     mut puzzle: ResMut<ColorPuzzle>,
     mut camera_query: Query<(&mut Camera2d, &mut BackgroundTranstion), With<Camera>>,
     mut last_click_query: Query<Entity, With<LastClick>>,
     mut start_level_events: EventReader<StartLevelEvent>,
-    asset_server: Res<AssetServer>,
 ) {
-    
+
     if start_level_events.iter().next().is_none() {
         return;
     }
 
     for entity in object_query.iter_mut() {
-        commands.entity(entity).despawn();        
-    }
-
-    for entity in score_query.iter_mut() {
-        commands.entity(entity).despawn();        
+        commands.entity(entity).despawn();
     }
 
     for entity in last_click_query.iter_mut() {
-        commands.entity(entity).despawn();        
+        commands.entity(entity).despawn();
     }
-
-    let font = asset_server.load("digital7mono.ttf");
-    
-    let text_style = TextStyle {
-        font: font.clone(),
-        font_size: 20.0,
-        color: Color::BLACK,
-        
-    };
-    let text_alignment = TextAlignment::Center;
-    commands.spawn((
-        Text2dBundle {
-            text: Text::from_section(format!("Score : {} ", puzzle.get_score().to_string()), text_style.clone())
-                .with_alignment(text_alignment),
-            transform: Transform::from_translation(Vec3::new(0.0, puzzle.get_height() / 2.0, 2.0)),
-            ..default()
-        },
-        ScoreText,
-        PuzzleColorGame {},
-    ));
 
     let current_color = puzzle.get_color();
     puzzle.generate_colors();
@@ -376,7 +385,7 @@ pub fn spawn_objects(
     let mut used_spaces = Vec::new();
     let mut z = 0.0;
     puzzle.for_each_color( |index,color, is_correct_color| {
-        
+
         let shape =  shapes::Rectangle {
             extents: Vec2::new(
                 puzzle.shape_size,
@@ -390,7 +399,7 @@ pub fn spawn_objects(
         }
 
         let mut x = random_range(((puzzle.get_width() - puzzle.shape_size) / 2.0 ) * -1.0 , (puzzle.get_width()  - puzzle.shape_size)  / 2.0 );
-        let mut y = random_range(((puzzle.get_height() - puzzle.shape_size)  / 2.0 ) * -1.0 , (puzzle.get_height() - puzzle.shape_size)  / 2.0 );    
+        let mut y = random_range(((puzzle.get_height() - puzzle.shape_size)  / 2.0 ) * -1.0 , (puzzle.get_height() - puzzle.shape_size)  / 2.0 );
         let mut exists = used_spaces.iter().any(|(start_x, start_y, end_x, end_y)| {
             cord_is_intersecting(
                 x, y, x + puzzle.shape_size, y + puzzle.shape_size,
@@ -401,7 +410,7 @@ pub fn spawn_objects(
         let mut max_tries = 100;
         while exists && max_tries > 0 {
             x = random_range(((puzzle.get_width() - puzzle.shape_size) / 2.0 ) * -1.0 , (puzzle.get_width()  - puzzle.shape_size)  / 2.0 );
-            y = random_range(((puzzle.get_height() - puzzle.shape_size)  / 2.0 ) * -1.0 , (puzzle.get_height() - puzzle.shape_size)  / 2.0 );    
+            y = random_range(((puzzle.get_height() - puzzle.shape_size)  / 2.0 ) * -1.0 , (puzzle.get_height() - puzzle.shape_size)  / 2.0 );
 
             exists = used_spaces.iter().any(|(start_x, start_y, end_x, end_y)| {
                 cord_is_intersecting(
@@ -415,7 +424,7 @@ pub fn spawn_objects(
         used_spaces.push((x,y, x + puzzle.shape_size, y + puzzle.shape_size));
 
         commands
-            .spawn(( 
+            .spawn((
                 ShapeBundle {
                     path: GeometryBuilder::build_as(&shape),
                     transform: Transform::from_xyz(x , y , z),
@@ -424,12 +433,12 @@ pub fn spawn_objects(
                 Fill::color(color),
                 PuzzleColor { index, is_correct_color, x , y, color: color.clone()},
                 PuzzleColorGame {},
-                
+
             )
         );
         z += 0.1;
     });
-    
+
 
 }
 
@@ -437,16 +446,26 @@ pub fn start_puzzle_level(
     mut start_level_event_writer: EventWriter<StartLevelEvent>,
     mut puzzle: ResMut<ColorPuzzle>,
     mut game_timer: ResMut<GameTimer>,
+    mut game_history: ResMut<GameHistory>,
+    mut pending_level_start: ResMut<PendingLevelStart>,
     window_query: Query<&Window, With<Window>>
 ) {
+    // A hold left over from a miss in a previous run would swallow the first
+    // pick of this one.
+    pending_level_start.clear();
+
     let window = window_query.single();
     puzzle.set_window_size(window.width(), window.height());
 
+    // Infinite runs never reach the timer-expiry path, so without this the
+    // game-over screen would report whichever mode was played last.
+    game_history.set_game_mode(puzzle.game_mode);
+
     if game_timer.timer.duration().as_secs_f32() != puzzle.start_seconds {
         game_timer.timer = puzzle.setup_timer();
-    } 
+    }
 
-    
+
 
     if game_timer.timer.finished() {
         game_timer.timer = puzzle.setup_timer();
@@ -456,7 +475,7 @@ pub fn start_puzzle_level(
         game_timer.timer.unpause();
     }
 
-    start_level_event_writer.send(StartLevelEvent);    
+    start_level_event_writer.send(StartLevelEvent);
 
 }
 
@@ -465,12 +484,11 @@ pub fn handle_new_game_event(
     mut puzzle: ResMut<ColorPuzzle>,
     mut game_timer: ResMut<GameTimer>,
     mut game_history: ResMut<GameHistory>,
-    mut start_level_event_writer: EventWriter<StartLevelEvent>,
     mut app_state_next_state: ResMut<NextState<crate::AppState>>,
     window_query: Query<&Window, With<Window>>
 ) {
-    let events = new_game_event_reader.iter().next();    
-    
+    let events = new_game_event_reader.iter().next();
+
     if events.is_none() {
         return;
     }
@@ -494,12 +512,12 @@ pub fn handle_new_game_event(
     }
 
     game_history.reset();
+    game_history.set_game_mode(event.game_mode);
 
+    // Entering Game runs `start_puzzle_level`, which sends `StartLevelEvent`
+    // itself. Sending one here too would queue a second board generation and
+    // the player would see the round regenerate twice.
     app_state_next_state.set(crate::AppState::Game);
-    start_level_event_writer.send(StartLevelEvent);   
-
-
-    
 }
 
 #[derive(Component)]
@@ -509,11 +527,13 @@ pub fn despaw_objects(
     mut commands: Commands,
     mut object_query: Query<Entity, With<PuzzleColorGame>>,
     mut puzzle: ResMut<ColorPuzzle>,
+    mut pending_level_start: ResMut<PendingLevelStart>,
 ) {
 
+    pending_level_start.clear();
 
     for entity in object_query.iter_mut() {
-        commands.entity(entity).despawn();        
+        commands.entity(entity).despawn();
     }
 
     puzzle.generate_colors();
