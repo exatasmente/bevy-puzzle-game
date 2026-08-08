@@ -118,7 +118,7 @@ pub fn update_timer_text(
     } else if remaining <= WARNING_SECONDS {
         theme::ACCENT
     } else {
-        theme::ON_SURFACE
+        theme::INFO
     };
 }
 

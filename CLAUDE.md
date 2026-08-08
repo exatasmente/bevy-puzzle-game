@@ -4,11 +4,18 @@ Guidance for AI assistants working in this repository.
 
 ## What this project is
 
-A color-matching puzzle game ("Color Puzzle") built with **Bevy 0.10** in Rust. The
-player is shown a field of randomly placed squares whose colors are near-identical
-variations of one another, and must click/tap the one square that carries the exact
-target color. It runs natively and in the browser via WebAssembly (a prebuilt WASM
-bundle is committed under `docs/` and served by GitHub Pages).
+A color-discrimination puzzle game ("Color Puzzle") built with **Bevy 0.10** in Rust.
+The player is shown a grid of squares that all share one color except a single odd
+one, and must tap the odd one. It runs natively and in the browser via WebAssembly (a
+prebuilt WASM bundle is committed under `docs/` and served by GitHub Pages).
+
+**The board never hides the answer in the background.** An earlier version painted the
+window with the target color, so the correct square was invisible and the task was
+really "spot the gap in the layout" — a pop-out the visual system solves in
+milliseconds, which made the color-distance difficulty dial almost irrelevant. The
+background is now the app's dark ground with a hint of the round's hue, and the round
+is decided by comparing squares to each other. Do not reintroduce a background that
+matches any square.
 
 The crate is still named `bevy-tetris` in `Cargo.toml` (leftover from the template
 this project started from) — the game itself has nothing to do with Tetris. Don't
@@ -121,6 +128,8 @@ Debug keyboard shortcuts in `src/systems.rs`: `G` → Game, `M` → MainMenu,
 src/
   main.rs                     App setup, AppState, PIXELS_PER_METER/RESOLUTION consts
   theme.rs                    Design tokens: palette, type scale, spacing, button states
+  oklab.rs                    Perceptual color space; the unit the difficulty is set in
+  layout.rs                   RelayoutEvent: screens rebuild when the window resizes
   feedback.rs                 FeedbackPlugin — pop, floating text, screen shake, banners, reveal
   storage.rs                  localStorage on wasm, no-op on native
   systems.rs                  spawn_camera, BackgroundTranstion component, debug hotkeys, exit_game
@@ -158,24 +167,47 @@ feature/
 Spawn on `OnEnter(state)`, despawn on `OnExit(state)`, gate per-frame systems with
 `run_if(in_state(...))` or `.in_set(OnUpdate(...))`.
 
+**Every screen that sizes itself from the window must handle `RelayoutEvent`**
+(`src/layout.rs`). Menus bake pixel widths — and the fitted font size of every label —
+into their node trees, so a window that changes size after the screen was built leaves
+it wrong. This is the normal case on the web, where `fit_canvas_to_parent` resizes the
+canvas a frame or two after the main menu has already been built at Bevy's default
+1280x720. The handlers despawn and rebuild; the pause screen just re-sends its own
+`SpawnPaginationEvent`.
+
 ### Gameplay core (`src/game/puzzle/`)
 
 `components.rs` holds the data model, `systems.rs` the behavior.
 
 - **`ColorPuzzle`** (Resource, `Reflect`) — the puzzle state machine: score,
-  `current_colors`, `correct_color_index`, window dimensions. The target color is a
-  *random element* of `current_colors`, and the camera clear color is set to it — so
-  the puzzle is "find the square that matches the background".
+  `current_colors`, `base_color`, `correct_color_index`, window dimensions.
+  `background_color()` is the app ground mixed 16% toward the round's base — never any
+  square's color. `is_correct_color(index)` compares *indices*, because every square
+  but one now shares a color by design.
 - **Difficulty** is a 1-based level derived from the score via the `LEVEL_START_SCORES`
-  table (`level_for_score`, `score_for_level`, `progress_to_next_level`). Two dials
-  move with it: `color_count_for_level` (4 → 12 squares) and
-  `color_variation_for_level` (0.16 → 0.05 channel distance). `generate_colors()`
-  varies each channel in both directions and enforces a minimum delta so no
-  distractor can duplicate the target.
+  table (`level_for_score`, `score_for_level`, `progress_to_next_level`). Three dials
+  move with it: `color_count_for_level` (4 → 12 squares), `color_delta_for_level`
+  (0.080 → 0.018) and, in `Memory`, `preview_seconds_for_level` (1.7s → 0.7s).
+- **Color generation** lives in `generate_colors()` and is written in **Oklab**
+  (`src/oklab.rs`), not sRGB. A round is one base color plus one odd color exactly
+  `color_delta_for_level` away from it in a random, mostly-chromatic direction. The
+  unit matters: 0.05 on an sRGB channel is glaring in a grey and invisible in a dark
+  blue, so the old per-channel variation made a level mean something different every
+  round. `oklab::to_color` returns `None` outside the sRGB gamut and the generator
+  retries rather than clamping — a clamped color would be closer to the base than the
+  level claims, and so easier.
 - **`GameMode`** — `Infinite` (no timer), `AgainstTheClock` (60s), `TimeTrial`
-  (30s, +3s per correct pick). `setup(&mode)` reconfigures `ColorPuzzle`;
-  `as_str()`/`description()` return the Portuguese labels, `storage_key()` is the
-  stable key for persisted bests, `is_timed()` distinguishes Infinite.
+  (30s, +3s per correct pick), `Memory` (no timer; the board is shown, then blanks).
+  `setup(&mode)` reconfigures `ColorPuzzle`; `as_str()`/`description()` return the
+  Portuguese labels, `accent()` the mode's identity color, `storage_key()` the stable
+  key for persisted bests, `is_timed()` and `hides_colors()` the behavior switches.
+  Descriptions have about 25 characters before the type shrinks past reading size —
+  shorten the string rather than the floor.
+- **`MemoryPhase`** (Resource) — drives a `Memory` round: preview, then hidden.
+  `hide_memory_board` repaints every square's `Fill` when the preview ends, which
+  leaves the entities alone so the hit test and the answer reveal keep working.
+  `player_interaction` refuses input while previewing, and repaints the true colors
+  on a miss so a missed round still teaches.
 - **`GameTimer`** (Resource) — a single `Timer`; starts paused. When it finishes,
   `tick_game_timer` transitions to `GameOverResume`. Infinite runs never expire, so
   they end only via "ENCERRAR PARTIDA" on the pause screen.
@@ -235,7 +267,7 @@ through in winit's top-left convention, so `player_interaction` flips those befo
 converting. Getting this wrong mirrors every pick vertically.
 
 The background is the camera clear color. `BackgroundTranstion` (`src/systems.rs`,
-spawned on the camera entity) lerps from the previous round's target color to the
+spawned on the camera entity) lerps from the previous round's background to the
 current one over `transition_seconds`; `background_transition` applies it each
 frame. `player_interaction` **ignores input while a transition is running** — if new
 input handling seems dead, check `is_in_transition()` first.
@@ -276,6 +308,25 @@ input handling seems dead, check `is_in_transition()` first.
 - No test suite, no `rustfmt.toml`/`clippy.toml`, and formatting in the tree is
   inconsistent (mixed indentation, trailing whitespace). Running `cargo fmt` across
   the repo would produce a huge unrelated diff — format only what you touch.
+
+### Visual language
+
+The palette in `theme.rs` is the mock-up's: near-black violet ground (`BACKGROUND`),
+panels a step above it (`SURFACE`, `SURFACE_RAISED`), and saturated accents —
+`PRIMARY` purple for the one action a screen wants taken, `DANGER` crimson for the one
+that ends a run, `SUCCESS`, `ACCENT`, `LIME`, `INFO`. Each `GameMode` owns one of them
+via `accent()`.
+
+Bevy 0.10's UI cannot stroke a node, so a border is a wrapper node painted in the
+border color with `HAIRLINE` padding, containing the real panel — see
+`theme::outlined_style`. Note that Taffy sizes the *content* box: a node at
+`Percent(100)` with padding is wider than its parent, and a `Px` node's padding is
+added outside its width. Both mistakes push whole screens off the edge, and both were
+in this codebase.
+
+The board squares are deliberately flat — no stroke, no glow, unlike the mock-up's
+blocks. An outline in the square's own color would make the odd square identifiable
+from its edge rather than its fill, which is the entire puzzle.
 
 ### Dead code to be aware of
 

@@ -16,6 +16,7 @@ pub struct BestScores {
     infinite: usize,
     against_the_clock: usize,
     time_trial: usize,
+    memory: usize,
 }
 
 impl BestScores {
@@ -24,6 +25,7 @@ impl BestScores {
             GameMode::Infinite => self.infinite,
             GameMode::AgainstTheClock => self.against_the_clock,
             GameMode::TimeTrial => self.time_trial,
+            GameMode::Memory => self.memory,
         }
     }
 
@@ -32,6 +34,7 @@ impl BestScores {
             GameMode::Infinite => self.infinite = value,
             GameMode::AgainstTheClock => self.against_the_clock = value,
             GameMode::TimeTrial => self.time_trial = value,
+            GameMode::Memory => self.memory = value,
         }
     }
 

@@ -19,7 +19,13 @@ pub const HISTORY_MENU_CONTAINER_STYLE: Style = Style {
     justify_content: JustifyContent::Center,
     align_items: AlignItems::Center,
     size: Size::new(Val::Percent(100.0), Val::Percent(100.0)),
-    padding: UiRect::all(Val::Px(theme::SPACE_SM)),
+    // Vertical only — see MAIN_MENU_STYLE.
+    padding: UiRect {
+        left: Val::Px(0.0),
+        right: Val::Px(0.0),
+        top: Val::Px(theme::SPACE_SM),
+        bottom: Val::Px(theme::SPACE_SM),
+    },
     gap: Size::new(Val::Px(theme::SPACE_XS), Val::Px(theme::SPACE_XS)),
     ..Style::DEFAULT
 };
@@ -45,15 +51,6 @@ pub fn history_card_label_width(width: f32) -> f32 {
 }
 
 pub const SWATCH_SIZE: f32 = 32.0;
-
-/// The color the round was actually asking for.
-pub const SWATCH_STYLE: Style = Style {
-    // `min_size` too: a flex row with a long label would otherwise shrink the
-    // swatch to nothing, and the swatch is the whole point of the row.
-    size: Size::new(Val::Px(SWATCH_SIZE), Val::Px(SWATCH_SIZE)),
-    min_size: Size::new(Val::Px(SWATCH_SIZE), Val::Px(SWATCH_SIZE)),
-    ..Style::DEFAULT
-};
 
 pub fn button_style(width: f32) -> Style {
     theme::button_style(width)

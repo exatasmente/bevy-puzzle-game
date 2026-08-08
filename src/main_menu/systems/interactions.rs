@@ -4,7 +4,7 @@ use crate::events::TransitionToStateEvent;
 use crate::game::puzzle::components::ColorPuzzle;
 use crate::game::puzzle::components::GameHistory;
 use crate::main_menu::components::*;
-use crate::main_menu::styles::{BUTTON, BUTTON_HOVERED, BUTTON_PRESSED};
+use crate::main_menu::styles::{card_border, card_border_hovered, card_border_pressed};
 use crate::pagination::Pagination;
 use crate::AppState;
 
@@ -22,9 +22,14 @@ pub fn interact_with_play_button(
     mut pagination: ResMut<Pagination>,
 ) {
     for (interaction, mut background_color, play_button) in button_query.iter_mut() {
+        // The card's border carries the mode's own color, so the feedback for
+        // touching it has to be built from that color rather than from the
+        // shared grey button ramp.
+        let accent = play_button.game_mode.accent();
+
         match *interaction {
             Interaction::Clicked => {
-                *background_color = BUTTON_PRESSED.into();
+                *background_color = card_border_pressed(accent).into();
                 puzzle.setup(&play_button.game_mode);
                 game_history.reset();
                 game_history.set_game_mode(play_button.game_mode);
@@ -33,8 +38,8 @@ pub fn interact_with_play_button(
                     state: AppState::Game,
                 });
             }
-            Interaction::Hovered => *background_color = BUTTON_HOVERED.into(),
-            Interaction::None => *background_color = BUTTON.into(),
+            Interaction::Hovered => *background_color = card_border_hovered(accent).into(),
+            Interaction::None => *background_color = card_border(accent).into(),
         }
     }
 }
