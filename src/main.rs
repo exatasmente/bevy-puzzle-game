@@ -24,6 +24,7 @@ use feedback::*;
 mod interaction_animation;
 use interaction_animation::*;
 
+mod board;
 mod layout;
 mod oklab;
 mod wfc;

@@ -84,7 +84,7 @@ pub fn player_interaction(
         let mut scored = false;
         let mut colors = Vec::new();
         let mut correct_position = None;
-        let mut correct_size = puzzle.shape_size;
+        let mut correct_size = Vec2::splat(puzzle.shape_size);
 
         for (transform, puzzle_color, _) in object_query.iter_mut() {
             colors.push(puzzle_color.as_level_color());
@@ -301,7 +301,7 @@ pub fn render_game_history(
         let size = color.size;
 
         let shape = shapes::Rectangle {
-            extents: Vec2::new(size, size),
+            extents: size,
             origin: shapes::RectangleOrigin::BottomLeft,
         };
 
@@ -327,13 +327,13 @@ pub fn render_game_history(
             ))
             .with_children(|parent| {
                 if let Some(tile) = color.tile {
-                    spawn_tile_arms(parent, tile, size, color.color);
+                    spawn_tile_arms(parent, tile, size.x, color.color);
                 }
             });
 
         if is_correct_color {
             let inner_shape =  shapes::Rectangle {
-                extents: Vec2::new(size - 20.0, size - 20.0),
+                extents: (size - Vec2::splat(20.0)).max(Vec2::splat(4.0)),
                 origin: shapes::RectangleOrigin::BottomLeft,
             };
             commands .spawn((
@@ -397,20 +397,20 @@ pub fn store_last_interaction_state(
     }
 }
 
-/// Whether a pick landed inside a square.
+/// Whether a pick landed inside a piece.
 ///
-/// `translation` is the square's bottom-left corner: the shapes are built with
+/// `translation` is the piece's bottom-left corner: the shapes are built with
 /// `RectangleOrigin::BottomLeft`.
 ///
 /// This used to test a 30x30 box growing up and to the right of the pick rather
-/// than the pick itself, which let a tap in the gap below-left of the target
-/// score as a hit. Harmless when squares were scattered; on a grid it would
-/// hand out points for tapping the wrong square.
-fn mouse_hover(translation: Vec3, point: Vec2, shape_size : f32) -> bool {
+/// than the pick itself, which handed out points for tapping the gap next to
+/// the answer — and with the answer invisible, the player would have had no way
+/// to tell why.
+fn mouse_hover(translation: Vec3, point: Vec2, size: Vec2) -> bool {
     point.x >= translation.x
-        && point.x <= translation.x + shape_size
+        && point.x <= translation.x + size.x
         && point.y >= translation.y
-        && point.y <= translation.y + shape_size
+        && point.y <= translation.y + size.y
 }
 
 
@@ -494,9 +494,8 @@ pub fn spawn_objects(
 
     let (mut camera, mut background_transition) = camera_query.single_mut();
 
-    // The background is the app's dark ground with a hint of this round's hue,
-    // never a square's color. Painting it with the target used to make the
-    // correct square invisible, which turned the game into "find the gap".
+    // The ground travels from the last round's color to this one's, and lands
+    // on the answer's color — which is what makes the answer invisible.
     background_transition.reset();
     background_transition.set_end_color(puzzle.background_color());
     background_transition.set_start_color(previous_background);
@@ -516,23 +515,41 @@ pub fn spawn_objects(
         cells.push((index, color, is_correct_color, tile));
     });
 
-    let grid = puzzle.round_grid();
-
-    // Everything downstream — the answer reveal, the replay, the hit test —
-    // measures squares by this.
-    puzzle.shape_size = grid.cell_size;
-
-    let shape = shapes::Rectangle {
-        extents: Vec2::new(grid.cell_size, grid.cell_size),
-        origin: shapes::RectangleOrigin::BottomLeft,
+    // Mosaic is laid out on the grid its pattern was generated for; every other
+    // mode gets the irregular cut, which is what keeps the invisible piece from
+    // being a hole at a predictable address.
+    let grid = puzzle.mosaic_grid();
+    let slots: Vec<(Vec2, Vec2)> = match &grid {
+        Some(grid) => (0..cells.len())
+            .map(|index| (grid.cell_position(index), Vec2::splat(grid.cell_size)))
+            .collect(),
+        None => puzzle
+            .slots()
+            .iter()
+            .map(|slot| (slot.position, slot.size))
+            .collect(),
     };
+
+    // A rough board-wide size, for anything that needs one before a piece is
+    // in hand.
+    puzzle.shape_size = slots
+        .first()
+        .map(|(_, size)| size.x.min(size.y))
+        .unwrap_or(puzzle.shape_size);
 
     let mut z = 0.0;
     for (index, color, is_correct_color, tile) in cells {
-        let position = grid.cell_position(index);
+        let Some((position, size)) = slots.get(index).copied() else {
+            continue;
+        };
+
+        let shape = shapes::Rectangle {
+            extents: size,
+            origin: shapes::RectangleOrigin::BottomLeft,
+        };
 
         // In a mosaic the cell is a plate the piece is drawn on, so every plate
-        // is the same neutral color; in the color modes the cell *is* the
+        // is the same neutral color; in the color modes the piece *is* the
         // color.
         let plate = if tile.is_some() { theme::SURFACE } else { color };
 
@@ -550,14 +567,14 @@ pub fn spawn_objects(
                     x: position.x,
                     y: position.y,
                     color,
-                    size: grid.cell_size,
+                    size,
                     tile,
                 },
                 PuzzleColorGame {},
             ))
             .with_children(|parent| {
                 if let Some(tile) = tile {
-                    spawn_tile_arms(parent, tile, grid.cell_size, color);
+                    spawn_tile_arms(parent, tile, size.x, color);
                 }
             });
 

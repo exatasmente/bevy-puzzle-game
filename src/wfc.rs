@@ -93,10 +93,6 @@ impl Tile {
         edges
     }
 
-    /// Whether this tile can sit next to `other` in direction `dir`.
-    pub fn fits(&self, other: &Tile, dir: usize) -> bool {
-        self.edges()[dir] == other.edges()[opposite(dir)]
-    }
 }
 
 /// Every distinct tile. Rotations that produce a tile already in the set are

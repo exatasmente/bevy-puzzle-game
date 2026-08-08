@@ -123,12 +123,12 @@ fn spawn_miss_cross(commands: &mut Commands, position: Vec2) {
     }
 }
 
-fn spawn_answer_reveal(commands: &mut Commands, position: Vec2, shape_size: f32) {
+fn spawn_answer_reveal(commands: &mut Commands, position: Vec2, shape_size: Vec2) {
     // Puzzle squares are spawned with a bottom-left origin, so this outline is
     // positioned the same way to sit exactly on top of one.
     let outline = shapes::Rectangle {
         origin: shapes::RectangleOrigin::BottomLeft,
-        extents: Vec2::new(shape_size, shape_size),
+        extents: shape_size,
     };
 
     commands.spawn((
