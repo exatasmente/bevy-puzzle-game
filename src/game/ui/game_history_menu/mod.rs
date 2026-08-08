@@ -25,10 +25,14 @@ impl Plugin for GameHistoryMenuPlugin {
                     interact_with_continue_button,
                     interact_with_end_run_button,
                     interact_with_pagination_button,
-                    spawn_pagination_itens,
                     relayout_game_history_menu,
                 )
                     .in_set(OnUpdate(AppState::History)),
+            )
+            .add_system(
+                spawn_pagination_itens
+                    .in_base_set(CoreSet::PostUpdate)
+                    .run_if(in_state(AppState::History)),
             )
             // OnExit State Systems
             .add_system(despawn_game_history_menu.in_schedule(OnExit(AppState::History)));

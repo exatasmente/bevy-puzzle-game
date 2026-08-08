@@ -129,6 +129,7 @@ src/
   main.rs                     App setup, AppState, PIXELS_PER_METER/RESOLUTION consts
   theme.rs                    Design tokens: palette, type scale, spacing, button states
   oklab.rs                    Perceptual color space; the unit the difficulty is set in
+  wfc.rs                      Wave function collapse; generates the Mosaic board (has tests)
   layout.rs                   RelayoutEvent: screens rebuild when the window resizes
   feedback.rs                 FeedbackPlugin — pop, floating text, screen shake, banners, reveal
   storage.rs                  localStorage on wasm, no-op on native
@@ -203,6 +204,18 @@ canvas a frame or two after the main menu has already been built at Bevy's defau
   key for persisted bests, `is_timed()` and `hides_colors()` the behavior switches.
   Descriptions have about 25 characters before the type shrinks past reading size —
   shorten the string rather than the floor.
+- **`Mosaic`** — the odd-one-out asked as a pattern instead of a color. `src/wfc.rs`
+  tiles the grid with pipe pieces whose edges must agree, then breaks exactly one.
+  The tile set is deliberately incomplete (no dead ends, no crosses) — with a complete
+  set every edge assignment would be realizable and propagation would rule nothing
+  out, which is to say it would not be WFC at all. Dials: `mosaic_dimensions_for_level`
+  (2x3 → 4x5) and `mosaic_violations_for_level` (4 → 1).
+  **A break of one edge is only fair against the outside of the board.** A
+  disagreement belongs to the edge, not the cell, so a single interior mismatch
+  implicates both neighbours equally and the game would mark one of two defensible
+  answers wrong. Two or more violations make the answer "the piece wrong on more than
+  one side"; one violation is allowed only where the other party is the void. The
+  tests in `wfc.rs` pin this down — that is what they are for.
 - **`MemoryPhase`** (Resource) — drives a `Memory` round: preview, then hidden.
   `hide_memory_board` repaints every square's `Fill` when the preview ends, which
   leaves the entities alone so the hit test and the answer reveal keep working.
@@ -305,9 +318,25 @@ input handling seems dead, check `is_in_transition()` first.
   declared in `Cargo.toml` but unused in `src/`. They still cost build time.
   `web-sys` is declared under a `cfg(target_arch = "wasm32")` target table and is
   used only by `src/storage.rs`.
-- No test suite, no `rustfmt.toml`/`clippy.toml`, and formatting in the tree is
-  inconsistent (mixed indentation, trailing whitespace). Running `cargo fmt` across
-  the repo would produce a huge unrelated diff — format only what you touch.
+- The only tests are in `src/wfc.rs`, and they cover generator invariants rather than
+  Bevy wiring. That split is deliberate: the generator is pure and its guarantees are
+  the game's fairness, while everything else needs a running app to mean anything.
+- No `rustfmt.toml`/`clippy.toml`, and formatting in the tree is inconsistent (mixed
+  indentation, trailing whitespace). Running `cargo fmt` across the repo would produce
+  a huge unrelated diff — format only what you touch.
+- **Never despawn a live `Button` from a system in `Update`.** Bevy 0.10's
+  `bevy_ui::accessibility::button_changed` is registered with a plain `add_system`, so
+  it sits unordered in `Update` and queues an `insert(AccessibilityNode)` for every
+  button it has not tagged. A despawn queued earlier in that schedule is applied
+  first, and the insert then hits a dead entity: `B0003`, which is a hard panic in
+  0.10 and a bare `RuntimeError: unreachable` in the browser. Screens that tear
+  themselves down and rebuild (`relayout_*`, `spawn_pagination_itens`) therefore run
+  in `CoreSet::PostUpdate`. There is no way to switch the a11y systems off — `bevy_ui`
+  depends on `bevy_a11y` unconditionally and adds the plugin itself. Despawning on
+  `OnExit` is fine: that runs in `StateTransition`, a schedule earlier in the frame.
+- `AudioPlugin` is disabled in `main.rs`. The game has no sound, and leaving it on
+  asked the browser for an `AudioContext` before any user gesture (which Chrome
+  refuses and logs) and probed for a device on native.
 
 ### Visual language
 

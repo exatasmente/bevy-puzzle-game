@@ -16,24 +16,42 @@ pub const MAIN_MENU_STYLE: Style = Style {
     ..Style::DEFAULT
 };
 
-pub const TITLE_STYLE: Style = Style {
-    flex_direction: FlexDirection::Column,
-    justify_content: JustifyContent::Center,
-    align_items: AlignItems::Center,
-    size: Size::new(Val::Percent(100.0), Val::Px(120.0)),
-    margin: UiRect {
-        left: Val::Px(0.0),
-        right: Val::Px(0.0),
-        top: Val::Px(0.0),
-        bottom: Val::Px(theme::SPACE_MD),
-    },
-    ..Style::DEFAULT
-};
+/// The wordmark block.
+///
+/// Both this and the cards below are sized from the window height, because the
+/// menu has no scrolling and the mode list has grown to five: at the fixed
+/// sizes they used to have, the last card fell off the bottom of a 480px
+/// screen, which is the shortest window the app allows.
+pub fn title_style(window_height: f32) -> Style {
+    Style {
+        flex_direction: FlexDirection::Column,
+        justify_content: JustifyContent::Center,
+        align_items: AlignItems::Center,
+        size: Size::new(Val::Percent(100.0), Val::Px((window_height * 0.14).clamp(70.0, 120.0))),
+        margin: UiRect {
+            left: Val::Px(0.0),
+            right: Val::Px(0.0),
+            top: Val::Px(0.0),
+            bottom: Val::Px(theme::SPACE_SM),
+        },
+        ..Style::DEFAULT
+    }
+}
+
+/// Height a mode card gets, given the window and how many modes must fit.
+pub fn mode_card_height(window_height: f32, modes: usize) -> f32 {
+    let title = (window_height * 0.14).clamp(70.0, 120.0);
+    let per_card = (window_height - title - theme::SPACE_LG) / modes.max(1) as f32;
+
+    // Below the touch target the card stops being a comfortable tap; above 84
+    // it just wastes space the list needs.
+    (per_card - theme::SPACE_SM * 2.0).clamp(theme::TOUCH_TARGET, 84.0)
+}
 
 /// The padded row inside a mode card: chip, then the text column.
-pub fn mode_card_inner_style() -> Style {
+pub fn mode_card_inner_style(height: f32) -> Style {
     Style {
-        min_size: Size::new(Val::Percent(100.0), Val::Px(76.0)),
+        min_size: Size::new(Val::Percent(100.0), Val::Px(height)),
         ..theme::outlined_inner_style()
     }
 }
@@ -54,6 +72,11 @@ pub fn mode_card_text_style(width: f32) -> Style {
 /// have taken their share.
 pub fn mode_card_text_width(width: f32) -> f32 {
     (width - theme::HAIRLINE * 2.0 - theme::SPACE_SM * 3.0 - MODE_CHIP_SIZE).max(80.0)
+}
+
+/// Side of the colored chip, shrunk if the card had to get short.
+pub fn mode_chip_size(card_height: f32) -> f32 {
+    MODE_CHIP_SIZE.min(card_height - theme::SPACE_SM * 2.0).max(20.0)
 }
 
 /// A mode card's border, in the mode's own color.

@@ -17,6 +17,7 @@ pub struct BestScores {
     against_the_clock: usize,
     time_trial: usize,
     memory: usize,
+    mosaic: usize,
 }
 
 impl BestScores {
@@ -26,6 +27,7 @@ impl BestScores {
             GameMode::AgainstTheClock => self.against_the_clock,
             GameMode::TimeTrial => self.time_trial,
             GameMode::Memory => self.memory,
+            GameMode::Mosaic => self.mosaic,
         }
     }
 
@@ -35,6 +37,7 @@ impl BestScores {
             GameMode::AgainstTheClock => self.against_the_clock = value,
             GameMode::TimeTrial => self.time_trial = value,
             GameMode::Memory => self.memory = value,
+            GameMode::Mosaic => self.mosaic = value,
         }
     }
 

@@ -4,6 +4,7 @@ use rand::prelude::*;
 
 use crate::oklab::{self, Oklab};
 use crate::theme;
+use crate::wfc::{self, Tile};
 
 #[derive(Component)]
 pub struct PuzzleColor {
@@ -16,6 +17,10 @@ pub struct PuzzleColor {
     /// `ColorPuzzle::shape_size` so a replayed round is drawn and hit-tested at
     /// the size it was actually played at, not at the current round's.
     pub size : f32,
+    /// The piece drawn on this cell in `Mosaic`, and `None` in every other
+    /// mode. Stored per cell for the same reason `size` is: a replayed round
+    /// has to redraw the board that was actually played.
+    pub tile : Option<Tile>,
 }
 
 impl PuzzleColor {
@@ -26,6 +31,7 @@ impl PuzzleColor {
             y : self.y,
             is_correct_color : self.is_correct_color,
             size : self.size,
+            tile : self.tile,
         }
     }
 
@@ -50,6 +56,8 @@ pub enum GameMode {
     TimeTrial,
     /// The board is shown, then goes blank, and the pick is made from memory.
     Memory,
+    /// A tiled pattern with one piece that does not fit its neighbours.
+    Mosaic,
 }
 
 impl GameMode {
@@ -59,6 +67,7 @@ impl GameMode {
             GameMode::AgainstTheClock,
             GameMode::TimeTrial,
             GameMode::Memory,
+            GameMode::Mosaic,
         ]
         .iter()
         .copied()
@@ -70,6 +79,7 @@ impl GameMode {
             GameMode::AgainstTheClock => "Contra o Tempo",
             GameMode::TimeTrial => "Soma de Tempo",
             GameMode::Memory => "Memoria",
+            GameMode::Mosaic => "Mosaico",
         }
     }
 
@@ -84,6 +94,7 @@ impl GameMode {
             GameMode::AgainstTheClock => "60 segundos no relogio.",
             GameMode::TimeTrial => "30s. Cada acerto soma 3s.",
             GameMode::Memory => "As cores somem. Lembre.",
+            GameMode::Mosaic => "Ache a peca que nao encaixa.",
         }
     }
 
@@ -94,6 +105,7 @@ impl GameMode {
             GameMode::AgainstTheClock => theme::SUCCESS,
             GameMode::TimeTrial => theme::LIME,
             GameMode::Memory => theme::INFO,
+            GameMode::Mosaic => theme::PINK,
         }
     }
 
@@ -105,17 +117,30 @@ impl GameMode {
             GameMode::AgainstTheClock => "against_the_clock",
             GameMode::TimeTrial => "time_trial",
             GameMode::Memory => "memory",
+            GameMode::Mosaic => "mosaic",
         }
     }
 
     /// Whether a run in this mode can ever end on its own.
+    ///
+    /// Every untimed mode has to be listed here. A mode left out gets a
+    /// zero-length timer from `setup`, which reads as finished on its first
+    /// frame and ends the run before the player sees the board.
     pub fn is_timed(&self) -> bool {
-        !matches!(self, GameMode::Infinite | GameMode::Memory)
+        !matches!(
+            self,
+            GameMode::Infinite | GameMode::Memory | GameMode::Mosaic
+        )
     }
 
     /// Whether the board blanks out before the pick.
     pub fn hides_colors(&self) -> bool {
         matches!(self, GameMode::Memory)
+    }
+
+    /// Whether the round is a tiled pattern rather than a field of colors.
+    pub fn is_mosaic(&self) -> bool {
+        matches!(self, GameMode::Mosaic)
     }
 }
 
@@ -126,6 +151,11 @@ pub struct ColorPuzzle {
     current_colors: Vec<Color>,
     /// The color all but one square share this round.
     base_color: Color,
+    /// One piece per cell in `Mosaic`, empty in every other mode.
+    #[reflect(ignore)]
+    current_tiles: Vec<Tile>,
+    /// Columns the mosaic was generated on. Only meaningful with `current_tiles`.
+    current_columns: usize,
     correct_color_index: usize,
     pub game_mode: GameMode,
     pub seconds_added_per_success: f32,
@@ -209,6 +239,36 @@ pub fn preview_seconds_for_level(level: usize) -> f32 {
     (1.7 - steps * 0.12).max(0.7)
 }
 
+/// Grid a `Mosaic` round is played on, by level.
+///
+/// Fixed dimensions rather than a count, because the generator reasons about
+/// neighbours: it needs to know the shape of the board, and a ragged last row
+/// would leave pieces with nothing to disagree with.
+pub fn mosaic_dimensions_for_level(level: usize) -> (usize, usize) {
+    match level {
+        1 => (2, 3),
+        2 | 3 => (3, 3),
+        4 | 5 => (3, 4),
+        6 | 7 => (4, 4),
+        _ => (4, 5),
+    }
+}
+
+/// How many of the odd piece's four edges disagree with their surroundings.
+///
+/// Four is unmissable; two is a real search. One is only reachable against the
+/// board's outer edge — `wfc::corrupt` explains why a lone disagreement between
+/// two pieces would be unfair rather than hard — and the generator falls back
+/// to two when it cannot place one.
+pub fn mosaic_violations_for_level(level: usize) -> usize {
+    match level {
+        1 => 4,
+        2 | 3 => 3,
+        4 | 5 | 6 => 2,
+        _ => 1,
+    }
+}
+
 /// Number of squares on screen at a level. Grows one at a time and stops well
 /// before the board turns into a wall of confetti.
 pub fn color_count_for_level(level: usize) -> usize {
@@ -288,6 +348,8 @@ impl ColorPuzzle {
             score: 0,
             current_colors: vec![],
             base_color: Color::rgb(0.5, 0.5, 0.5),
+            current_tiles: vec![],
+            current_columns: 0,
             correct_color_index: 0,
             game_mode: GameMode::TimeTrial,
             seconds_added_per_success: 3.0,
@@ -325,6 +387,14 @@ impl ColorPuzzle {
                 self.seconds_added_per_success = 3.0;
                 self.game_mode = GameMode::TimeTrial;
             },
+            GameMode::Mosaic => {
+                // Untimed, like Memory: reading a pattern is slower than
+                // comparing two colors, and a clock would only push the player
+                // to guess.
+                self.start_seconds = 0.0;
+                self.transition_seconds = 0.35;
+                self.game_mode = GameMode::Mosaic;
+            },
             GameMode::Memory => {
                 // No clock: the pressure in this mode is the preview running
                 // out, and stacking a run timer on top of it only punishes the
@@ -357,9 +427,9 @@ impl ColorPuzzle {
         )
     }
 
-    /// Grid for the round currently loaded into `current_colors`.
+    /// Grid for the round currently loaded.
     pub fn board_grid(&self) -> BoardGrid {
-        self.grid_for_count(self.current_colors.len().max(1))
+        self.round_grid()
     }
 
     /// Grid that fits `count` squares into the play area.
@@ -402,6 +472,26 @@ impl ColorPuzzle {
         }
 
         let rows = (count + columns - 1) / columns;
+        self.grid_from(columns, rows, count, cell_size)
+    }
+
+    /// Grid with the dimensions fixed by the caller.
+    ///
+    /// `Mosaic` needs this: its generator reasoned about a particular number of
+    /// columns and rows, so the board has to be drawn on exactly those.
+    pub fn grid_for_dimensions(&self, columns: usize, rows: usize) -> BoardGrid {
+        let columns = columns.max(1);
+        let rows = rows.max(1);
+        let available = self.play_area();
+
+        let width = (available.x - BOARD_GAP * (columns - 1) as f32) / columns as f32;
+        let height = (available.y - BOARD_GAP * (rows - 1) as f32) / rows as f32;
+
+        self.grid_from(columns, rows, columns * rows, width.min(height))
+    }
+
+    /// Sizes and centers a grid of known shape.
+    fn grid_from(&self, columns: usize, rows: usize, count: usize, cell_size: f32) -> BoardGrid {
         let cell_size = cell_size.min(MAX_CELL_SIZE).max(8.0);
 
         let grid_width = columns as f32 * cell_size + BOARD_GAP * (columns - 1) as f32;
@@ -431,6 +521,11 @@ impl ColorPuzzle {
         let mut rng = rand::thread_rng();
 
         let level = self.level();
+        if self.game_mode.is_mosaic() {
+            self.generate_mosaic(level, &mut rng);
+            return;
+        }
+
         let count = color_count_for_level(level);
         let delta = color_delta_for_level(level);
 
@@ -451,7 +546,29 @@ impl ColorPuzzle {
         colors[self.correct_color_index] = odd_color;
 
         self.base_color = base_color;
+        self.current_tiles = vec![];
+        self.current_columns = 0;
         self.current_colors = colors;
+    }
+
+    /// Builds a `Mosaic` round: a tiling that fits together everywhere except
+    /// at one piece.
+    ///
+    /// Every cell shares one color here — the pattern carries the puzzle, so a
+    /// second variable would only muddy which rule the player is being asked to
+    /// apply.
+    fn generate_mosaic(&mut self, level: usize, rng: &mut ThreadRng) {
+        let (columns, rows) = mosaic_dimensions_for_level(level);
+        let mosaic = wfc::generate(columns, rows, mosaic_violations_for_level(level), rng);
+
+        let base_lab = Self::random_base(rng);
+        let base_color = oklab::to_color(base_lab).unwrap_or(Color::rgb(0.5, 0.5, 0.5));
+
+        self.base_color = base_color;
+        self.current_colors = vec![base_color; mosaic.tiles.len()];
+        self.correct_color_index = mosaic.broken;
+        self.current_columns = mosaic.columns;
+        self.current_tiles = mosaic.tiles;
     }
 
     /// A displayable, reasonably saturated color to build a round on.
@@ -598,24 +715,45 @@ impl ColorPuzzle {
         self.score = 0;
     }
 
-    pub fn for_each_color<F>(&self, mut f: F)
+    /// Walks the round's cells: color, whether it is the answer, and the piece
+    /// drawn on it (`None` outside `Mosaic`).
+    pub fn for_each_cell<F>(&self, mut f: F)
     where
-        F: FnMut(usize, Color, bool),
+        F: FnMut(usize, Color, bool, Option<Tile>),
     {
         for (index, color) in self.current_colors.iter().enumerate() {
-            f(index, *color, self.is_correct_color(index));
+            f(
+                index,
+                *color,
+                self.is_correct_color(index),
+                self.current_tiles.get(index).copied(),
+            );
         }
+    }
+
+    /// The grid this round is laid out on.
+    ///
+    /// A mosaic keeps the dimensions it was generated for; every other mode
+    /// lets the board pick whatever shape fits the window best.
+    pub fn round_grid(&self) -> BoardGrid {
+        if self.current_columns > 0 && !self.current_tiles.is_empty() {
+            let rows = self.current_tiles.len() / self.current_columns;
+            return self.grid_for_dimensions(self.current_columns, rows);
+        }
+
+        self.grid_for_count(self.current_colors.len().max(1))
     }
     
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Reflect)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct LevelColor {
     pub color : Color,
     pub x : f32,
     pub y : f32,
     pub is_correct_color : bool,
     pub size : f32,
+    pub tile : Option<Tile>,
 }
 
 pub struct LastInteractionEvent {

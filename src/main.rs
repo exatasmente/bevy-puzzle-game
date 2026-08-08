@@ -1,4 +1,4 @@
-use bevy::{prelude::*, window::PresentMode};
+use bevy::{audio::AudioPlugin, prelude::*, window::PresentMode};
 use bevy_prototype_lyon::prelude::ShapePlugin;
 mod main_menu;
 use main_menu::*;
@@ -26,6 +26,7 @@ use interaction_animation::*;
 
 mod layout;
 mod oklab;
+mod wfc;
 mod storage;
 mod theme;
 
@@ -71,7 +72,12 @@ fn main() {
                 ..default()
             }),
             ..default()
-        }))
+        })
+        // The game has no sound. Keeping the plugin meant asking the browser
+        // for an AudioContext before any user gesture, which Chrome refuses
+        // and logs, and probing for an audio device on native, which warns on
+        // machines that have none.
+        .disable::<AudioPlugin>())
         .add_plugin(ShapePlugin)
         .run();
 }

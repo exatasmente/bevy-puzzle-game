@@ -16,12 +16,12 @@ pub fn spawn_main_menu(
 ) {
     // Cards are laid out against the real window width so their labels can be
     // fitted to a pixel width.
-    let width = window_query
+    let (width, height) = window_query
         .get_single()
-        .map(|window| theme::content_width(window.width()))
-        .unwrap_or(theme::CONTENT_MAX_WIDTH);
+        .map(|window| (theme::content_width(window.width()), window.height()))
+        .unwrap_or((theme::CONTENT_MAX_WIDTH, 720.0));
 
-    build_main_menu(&mut commands, &asset_server, &best_scores, width);
+    build_main_menu(&mut commands, &asset_server, &best_scores, width, height);
 }
 
 /// Puts the app's own background back after a run.
@@ -47,6 +47,19 @@ pub fn reset_background(
 /// Cheaper options were considered and rejected: the card widths are baked into
 /// dozens of nodes, and the fitted font size of every label depends on them, so
 /// there is nothing to patch in place — the screen has to be built again.
+///
+/// **This runs in `PostUpdate`, and any system that despawns a live `Button`
+/// must.** Bevy 0.10's `bevy_ui::accessibility::button_changed` is registered
+/// with a plain `add_system`, so it sits unordered in `Update` and queues an
+/// `insert(AccessibilityNode)` for every button it has not tagged yet. If a
+/// despawn is queued earlier in that same schedule, the despawn is applied
+/// first and the insert then hits a dead entity — which is `B0003`, a hard
+/// panic in 0.10, and a bare `RuntimeError: unreachable` in the browser.
+/// Running here puts our commands in a later schedule than the a11y ones, so
+/// the insert always lands on a live entity.
+///
+/// There is no feature to switch this off: `bevy_ui` depends on `bevy_a11y`
+/// unconditionally and adds the plugin itself.
 pub fn relayout_main_menu(
     mut commands: Commands,
     mut relayout_events: EventReader<crate::layout::RelayoutEvent>,
@@ -72,6 +85,7 @@ pub fn relayout_main_menu(
         &asset_server,
         &best_scores,
         theme::content_width(window.width()),
+        window.height(),
     );
 }
 
@@ -86,10 +100,13 @@ pub fn build_main_menu(
     asset_server: &Res<AssetServer>,
     best_scores: &Res<BestScores>,
     width: f32,
+    height: f32,
 ) -> Entity {
     // The card is a bordered wrapper around a padded row, so the text column has
     // the wrapper's padding and the chip's width taken off it.
     let text_width = mode_card_text_width(width);
+    let card_height = mode_card_height(height, GameMode::iter().count());
+    let chip_size = mode_chip_size(card_height);
 
     commands
         .spawn((
@@ -103,7 +120,7 @@ pub fn build_main_menu(
         .with_children(|parent| {
             parent
                 .spawn(NodeBundle {
-                    style: TITLE_STYLE,
+                    style: title_style(height),
                     ..default()
                 })
                 .with_children(|parent| {
@@ -138,7 +155,7 @@ pub fn build_main_menu(
                     .with_children(|parent| {
                         parent
                             .spawn(NodeBundle {
-                                style: mode_card_inner_style(),
+                                style: mode_card_inner_style(card_height),
                                 background_color: theme::SURFACE.into(),
                                 ..default()
                             })
@@ -148,7 +165,7 @@ pub fn build_main_menu(
                                 // and there is no icon asset, so the color
                                 // carries the identity on its own.
                                 parent.spawn(NodeBundle {
-                                    style: theme::tile_style(MODE_CHIP_SIZE),
+                                    style: theme::tile_style(chip_size),
                                     background_color: accent.into(),
                                     ..default()
                                 });
