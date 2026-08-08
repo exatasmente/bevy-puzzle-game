@@ -4,6 +4,7 @@ use crate::game::puzzle::components::GameMode;
 use crate::storage;
 
 const STORAGE_KEY: &str = "color_puzzle.best_scores";
+const RUN_KEY: &str = "color_puzzle.saved_run";
 
 /// Best score per mode, persisted where the platform allows it.
 ///
@@ -102,4 +103,62 @@ pub struct LastRunOutcome {
     pub score: usize,
     pub best: usize,
     pub is_record: bool,
+}
+
+/// A run in progress, kept across reloads.
+///
+/// Only the mode and the score are stored, because the score is what the level
+/// is derived from and the board is generated fresh every round anyway — there
+/// is no position to restore, only a place in the curve. Storing the whole
+/// `GameHistory` would persist a list of past rounds nobody comes back for.
+#[derive(Resource, Debug, Default)]
+pub struct SavedRun {
+    run: Option<(GameMode, usize)>,
+}
+
+impl SavedRun {
+    pub fn get(&self) -> Option<(GameMode, usize)> {
+        self.run
+    }
+
+    /// Records where the run has got to. A score of zero is not worth coming
+    /// back to, so it clears instead — otherwise the menu would offer to resume
+    /// a run the player never started scoring in.
+    pub fn store(&mut self, mode: GameMode, score: usize) {
+        if score == 0 {
+            self.clear();
+            return;
+        }
+
+        self.run = Some((mode, score));
+        storage::save(RUN_KEY, &format!("{}={}", mode.storage_key(), score));
+    }
+
+    pub fn clear(&mut self) {
+        self.run = None;
+        storage::save(RUN_KEY, "");
+    }
+
+    pub fn load() -> Self {
+        let Some(raw) = storage::load(RUN_KEY) else {
+            return Self::default();
+        };
+
+        let Some((key, value)) = raw.split_once('=') else {
+            return Self::default();
+        };
+
+        let Ok(score) = value.trim().parse::<usize>() else {
+            return Self::default();
+        };
+
+        // An unknown mode key means the save came from a build that had a mode
+        // this one does not. Dropping it beats resuming into the wrong game.
+        let run = GameMode::iter()
+            .find(|mode| mode.storage_key() == key.trim())
+            .filter(|_| score > 0)
+            .map(|mode| (mode, score));
+
+        Self { run }
+    }
 }

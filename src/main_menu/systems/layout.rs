@@ -1,8 +1,8 @@
 use bevy::core_pipeline::clear_color::ClearColorConfig;
 use bevy::prelude::*;
 
-use crate::game::puzzle::components::GameMode;
-use crate::game::score::resources::BestScores;
+use crate::game::puzzle::components::{level_for_score, GameMode};
+use crate::game::score::resources::{BestScores, SavedRun};
 use crate::main_menu::components::*;
 use crate::main_menu::styles::*;
 use crate::systems::BackgroundTranstion;
@@ -12,6 +12,7 @@ pub fn spawn_main_menu(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     best_scores: Res<BestScores>,
+    saved_run: Res<SavedRun>,
     window_query: Query<&Window>,
 ) {
     // Cards are laid out against the real window width so their labels can be
@@ -21,7 +22,7 @@ pub fn spawn_main_menu(
         .map(|window| (theme::content_width(window.width()), window.height()))
         .unwrap_or((theme::CONTENT_MAX_WIDTH, 720.0));
 
-    build_main_menu(&mut commands, &asset_server, &best_scores, width, height);
+    build_main_menu(&mut commands, &asset_server, &best_scores, &saved_run, width, height);
 }
 
 /// Puts the app's own background back after a run.
@@ -66,6 +67,7 @@ pub fn relayout_main_menu(
     main_menu_query: Query<Entity, With<MainMenu>>,
     asset_server: Res<AssetServer>,
     best_scores: Res<BestScores>,
+    saved_run: Res<SavedRun>,
     window_query: Query<&Window>,
 ) {
     if relayout_events.iter().next().is_none() {
@@ -84,6 +86,7 @@ pub fn relayout_main_menu(
         &mut commands,
         &asset_server,
         &best_scores,
+        &saved_run,
         theme::content_width(window.width()),
         window.height(),
     );
@@ -99,13 +102,18 @@ pub fn build_main_menu(
     commands: &mut Commands,
     asset_server: &Res<AssetServer>,
     best_scores: &Res<BestScores>,
+    saved_run: &Res<SavedRun>,
     width: f32,
     height: f32,
 ) -> Entity {
     // The card is a bordered wrapper around a padded row, so the text column has
     // the wrapper's padding and the chip's width taken off it.
     let text_width = mode_card_text_width(width);
-    let card_height = mode_card_height(height, GameMode::iter().count());
+    // The resume card, when there is one, is a card like the others and has to
+    // be counted when the list is fitted to the window.
+    let resume = saved_run.get();
+    let cards = GameMode::iter().count() + usize::from(resume.is_some());
+    let card_height = mode_card_height(height, cards);
     let chip_size = mode_chip_size(card_height);
 
     commands
@@ -140,69 +148,45 @@ pub fn build_main_menu(
                     ));
                 });
 
+            // Offered first, and only when there is a run worth coming back
+            // to: a player who left mid-run is here to finish it, not to read
+            // the mode list again.
+            if let Some((game_mode, score)) = resume {
+                spawn_card(
+                    parent,
+                    asset_server,
+                    game_mode.accent(),
+                    width,
+                    card_height,
+                    chip_size,
+                    text_width,
+                    "CONTINUAR",
+                    &format!("{} - NIVEL {}", game_mode.as_str().to_uppercase(), level_for_score(score)),
+                    Some(format!("PONTOS: {}", score)),
+                    ContinueRunButton { game_mode, score },
+                );
+            }
+
             for game_mode in GameMode::iter() {
-                let accent = game_mode.accent();
+                // Show the target before the run rather than only after it: the
+                // number to beat is what the run is for.
+                let best = best_scores.get(game_mode);
+                let footnote = (best > 0).then(|| format!("RECORDE: {}", best));
 
-                parent
-                    .spawn((
-                        ButtonBundle {
-                            style: theme::outlined_style(width),
-                            background_color: card_border(accent).into(),
-                            ..default()
-                        },
-                        PlayButton { game_mode },
-                    ))
-                    .with_children(|parent| {
-                        parent
-                            .spawn(NodeBundle {
-                                style: mode_card_inner_style(card_height),
-                                background_color: theme::SURFACE.into(),
-                                ..default()
-                            })
-                            .with_children(|parent| {
-                                // The mode's marker. The mock-up puts an icon
-                                // here; the display font has no glyph for one
-                                // and there is no icon asset, so the color
-                                // carries the identity on its own.
-                                parent.spawn(NodeBundle {
-                                    style: theme::tile_style(chip_size),
-                                    background_color: accent.into(),
-                                    ..default()
-                                });
-
-                                parent
-                                    .spawn(NodeBundle {
-                                        style: mode_card_text_style(text_width),
-                                        ..default()
-                                    })
-                                    .with_children(|parent| {
-                                        parent.spawn(theme::wrapped_text(
-                                            game_mode.as_str().to_uppercase(),
-                                            get_mode_name_text_style(asset_server),
-                                            text_width,
-                                        ));
-                                        // Say what the mode is before the player
-                                        // commits to it.
-                                        parent.spawn(theme::wrapped_text(
-                                            game_mode.description().to_uppercase(),
-                                            get_mode_description_text_style(asset_server),
-                                            text_width,
-                                        ));
-
-                                        // Show the target before the run rather
-                                        // than only after it: the number to beat
-                                        // is what the run is for.
-                                        let best = best_scores.get(game_mode);
-                                        if best > 0 {
-                                            parent.spawn(theme::wrapped_text(
-                                                format!("RECORDE: {}", best),
-                                                get_best_score_text_style(asset_server),
-                                                text_width,
-                                            ));
-                                        }
-                                    });
-                            });
-                    });
+                spawn_card(
+                    parent,
+                    asset_server,
+                    game_mode.accent(),
+                    width,
+                    card_height,
+                    chip_size,
+                    text_width,
+                    &game_mode.as_str().to_uppercase(),
+                    // Say what the mode is before the player commits to it.
+                    &game_mode.description().to_uppercase(),
+                    footnote,
+                    PlayButton { game_mode },
+                );
             }
         })
         .id()
@@ -225,4 +209,75 @@ fn wordmark() -> Vec<(String, Color)> {
     }
 
     sections
+}
+
+/// One card in the menu list: a colored chip, a name, a line of explanation and
+/// an optional number underneath.
+#[allow(clippy::too_many_arguments)]
+fn spawn_card<M: Component>(
+    parent: &mut ChildBuilder,
+    asset_server: &Res<AssetServer>,
+    accent: Color,
+    width: f32,
+    card_height: f32,
+    chip_size: f32,
+    text_width: f32,
+    title: &str,
+    description: &str,
+    footnote: Option<String>,
+    marker: M,
+) {
+    parent
+        .spawn((
+            ButtonBundle {
+                style: theme::outlined_style(width),
+                background_color: card_border(accent).into(),
+                ..default()
+            },
+            marker,
+        ))
+        .with_children(|parent| {
+            parent
+                .spawn(NodeBundle {
+                    style: mode_card_inner_style(card_height),
+                    background_color: theme::SURFACE.into(),
+                    ..default()
+                })
+                .with_children(|parent| {
+                    // The card's marker. The mock-up puts an icon here; the
+                    // display font has no glyph for one and there is no icon
+                    // asset, so the color carries the identity on its own.
+                    parent.spawn(NodeBundle {
+                        style: theme::tile_style(chip_size),
+                        background_color: accent.into(),
+                        ..default()
+                    });
+
+                    parent
+                        .spawn(NodeBundle {
+                            style: mode_card_text_style(text_width),
+                            ..default()
+                        })
+                        .with_children(|parent| {
+                            parent.spawn(theme::wrapped_text(
+                                title,
+                                get_mode_name_text_style(asset_server),
+                                text_width,
+                            ));
+                            parent.spawn(theme::wrapped_text(
+                                description,
+                                get_mode_description_text_style(asset_server),
+                                text_width,
+                            ));
+
+                            if let Some(footnote) = footnote {
+                                parent.spawn(theme::wrapped_text(
+                                    footnote,
+                                    get_best_score_text_style(asset_server),
+                                    text_width,
+                                ));
+                            }
+                        });
+                });
+        });
 }

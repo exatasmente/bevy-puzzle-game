@@ -27,7 +27,9 @@ impl Plugin for ScorePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<LastRunOutcome>()
             .init_resource::<BestScores>()
+            .init_resource::<SavedRun>()
             .add_startup_system(load_best_scores)
+            .add_system(remember_run.in_set(OnUpdate(AppState::Game)))
             .add_system(
                 record_run_outcome
                     .in_set(RecordOutcomeSet)

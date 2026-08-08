@@ -91,7 +91,7 @@ const JITTER: f32 = 0.34;
 /// rather than to what they asked for.
 pub fn layout(min: Vec2, max: Vec2, count: usize, rng: &mut impl Rng) -> Vec<Piece> {
     let count = count.max(1);
-    let seeds = scatter(min, max, count, rng);
+    let (mut seeds, playable) = scatter(min, max, count, rng);
     let frame = vec![
         min,
         Vec2::new(max.x, min.y),
@@ -99,30 +99,26 @@ pub fn layout(min: Vec2, max: Vec2, count: usize, rng: &mut impl Rng) -> Vec<Pie
         Vec2::new(min.x, max.y),
     ];
 
-    let mut pieces = Vec::with_capacity(seeds.len());
-
-    for (index, seed) in seeds.iter().enumerate() {
-        // The cell of a seed is everything closer to it than to any other seed:
-        // the frame, cut by the perpendicular bisector against each of them.
-        let mut cell = frame.clone();
-
-        for (other_index, other) in seeds.iter().enumerate() {
-            if other_index == index {
-                continue;
-            }
-
-            let normal = *other - *seed;
-            let midpoint = (*other + *seed) / 2.0;
-            cell = clip(&cell, normal, midpoint.dot(normal));
-
-            if cell.len() < 3 {
-                break;
+    // One round of Lloyd relaxation:each seed moves to the middle of its own
+    // cell. Jitter alone leaves the occasional seed crowded against a
+    // neighbour, and the sliver that produces has to be dropped — which puts a
+    // second background-colored hole on the board, indistinguishable from the
+    // answer. Relaxing evens the cells out without making them regular, since
+    // the seeds keep the offsets the jitter gave them.
+    for _ in 0..2 {
+        for index in 0..playable {
+            if let Some(cell) = cell_of(&seeds, index, &frame) {
+                seeds[index] = centroid(&cell);
             }
         }
+    }
 
-        if cell.len() < 3 {
+    let mut pieces = Vec::with_capacity(playable);
+
+    for index in 0..playable {
+        let Some(cell) = cell_of(&seeds, index, &frame) else {
             continue;
-        }
+        };
 
         let gap = rng.gen_range(MIN_GAP..MAX_GAP);
         let cell = shrink(&cell, gap);
@@ -148,13 +144,45 @@ pub fn layout(min: Vec2, max: Vec2, count: usize, rng: &mut impl Rng) -> Vec<Pie
     pieces
 }
 
-/// Seeds on a jittered grid.
+/// The region closer to `seeds[index]` than to any other seed, clipped to the
+/// frame. `None` when the seed is crowded out entirely.
+fn cell_of(seeds: &[Vec2], index: usize, frame: &[Vec2]) -> Option<Vec<Vec2>> {
+    let seed = seeds[index];
+    let mut cell = frame.to_vec();
+
+    for (other_index, other) in seeds.iter().enumerate() {
+        if other_index == index {
+            continue;
+        }
+
+        let normal = *other - seed;
+        let midpoint = (*other + seed) / 2.0;
+        cell = clip(&cell, normal, midpoint.dot(normal));
+
+        if cell.len() < 3 {
+            return None;
+        }
+    }
+
+    Some(cell)
+}
+
+/// Seeds on a jittered honeycomb lattice.
 ///
 /// A uniform random scatter clumps — some seeds land almost on top of each
-/// other and produce cells too thin to tap. Starting from a grid and letting
+/// other and produce cells too thin to tap. Starting from a lattice and letting
 /// each seed wander inside its own slot keeps them apart while leaving the
 /// result plainly irregular.
-fn scatter(min: Vec2, max: Vec2, count: usize, rng: &mut impl Rng) -> Vec<Vec2> {
+///
+/// The lattice has every other row offset by half a step, which is what makes
+/// the cells hexagonal. This matters more than it sounds: seeds on a square
+/// grid meet four neighbours and their cells come out as quadrilaterals — a
+/// grid that has been shaken, which is exactly the look this layout exists to
+/// avoid. Offset rows give each seed six neighbours, and six neighbours is a
+/// honeycomb.
+/// Returns every seed, and how many of them at the front of the list become
+/// pieces. The rest are ghosts.
+fn scatter(min: Vec2, max: Vec2, count: usize, rng: &mut impl Rng) -> (Vec<Vec2>, usize) {
     let area = max - min;
     let aspect = area.x / area.y.max(1.0);
 
@@ -167,25 +195,51 @@ fn scatter(min: Vec2, max: Vec2, count: usize, rng: &mut impl Rng) -> Vec<Vec2> 
 
     let step = Vec2::new(area.x / columns as f32, area.y / rows as f32);
 
-    let mut slots: Vec<(usize, usize)> = (0..rows)
-        .flat_map(|row| (0..columns).map(move |column| (column, row)))
+    let mut slots: Vec<(isize, isize)> = (0..rows as isize)
+        .flat_map(|row| (0..columns as isize).map(move |column| (column, row)))
         .collect();
 
     // Dropping the surplus slots at random is deliberate: the cells left next
     // to a hole grow into it, which is where the bigger pieces come from.
     slots.shuffle(rng);
     slots.truncate(count);
+    let playable = slots.len();
 
-    slots
+    // A ring of seeds outside the area. They never become pieces; they exist so
+    // that the cells along the edge are bounded by a bisector against a
+    // neighbour rather than by the frame. Without them almost every cell on a
+    // board this small is a frame-clipped quadrilateral, which is the grid look
+    // this layout exists to avoid.
+    for row in -1..=rows as isize {
+        for column in -1..=columns as isize {
+            let outside = row < 0
+                || column < 0
+                || row >= rows as isize
+                || column >= columns as isize;
+
+            if outside {
+                slots.push((column, row));
+            }
+        }
+    }
+
+    let seeds = slots
         .into_iter()
         .map(|(column, row)| {
-            let slot = min + Vec2::new(column as f32 + 0.5, row as f32 + 0.5) * step;
+            let stagger = if row.rem_euclid(2) == 1 { 0.5 } else { 0.0 };
+            let slot = min
+                + Vec2::new(column as f32 + 0.5 + stagger, row as f32 + 0.5) * step;
+
+            // Less sideways wander than vertical: a seed that crosses into the
+            // column next door undoes the interlock the stagger just created.
             slot + Vec2::new(
-                rng.gen_range(-JITTER..JITTER) * step.x,
+                rng.gen_range(-JITTER * 0.6..JITTER * 0.6) * step.x,
                 rng.gen_range(-JITTER..JITTER) * step.y,
             )
         })
-        .collect()
+        .collect();
+
+    (seeds, playable)
 }
 
 /// Sutherland–Hodgman: keeps the part of a convex polygon on the near side of
@@ -338,22 +392,33 @@ mod tests {
         }
     }
 
-    /// The pieces are polygons, not squares: a honeycomb, not a grid.
+    /// The pieces are a honeycomb, not a grid.
+    ///
+    /// This is the test that catches the layout quietly regressing into
+    /// quadrilaterals — which is what happens without the staggered rows, or
+    /// without the ring of seeds outside the frame. Measured across many
+    /// boards, four-sided pieces sit near 4%; the bar is set well clear of
+    /// that so it fails on a real change and not on the dice.
     #[test]
     fn pieces_are_many_sided() {
         let mut rng = rng();
-        let pieces = layout(MIN, MAX, 12, &mut rng);
+        let mut many_sided = 0;
+        let mut total = 0;
 
-        let many_sided = pieces
-            .iter()
-            .filter(|piece| piece.corners.len() >= 5)
-            .count();
+        for _ in 0..60 {
+            for piece in layout(MIN, MAX, 12, &mut rng) {
+                total += 1;
+                if piece.corners.len() >= 5 {
+                    many_sided += 1;
+                }
+            }
+        }
 
         assert!(
-            many_sided * 2 >= pieces.len(),
+            many_sided * 100 >= total * 80,
             "only {} of {} pieces have five or more sides",
             many_sided,
-            pieces.len()
+            total
         );
     }
 
@@ -374,3 +439,5 @@ mod tests {
         assert!(spread > 10.0, "pieces are all but the same size: {:?}", widths);
     }
 }
+
+

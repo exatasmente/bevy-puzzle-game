@@ -225,7 +225,11 @@ canvas a frame or two after the main menu has already been built at Bevy's defau
   The tile set is deliberately incomplete (no dead ends, no crosses) — with a complete
   set every edge assignment would be realizable and propagation would rule nothing
   out, which is to say it would not be WFC at all. Dials: `mosaic_dimensions_for_level`
-  (2x3 → 4x5) and `mosaic_violations_for_level` (4 → 1).
+  (2x3 → 5x5) and `mosaic_violations_for_level`, which is **only ever 4 or 2**.
+  That restriction is forced by the tile set, not chosen: three edges away from a piece
+  with two arms or fewer is always a three-armed piece, and so is one edge away from a
+  legal piece at the border. Both settings made the impostor a T every single time —
+  a tell the player learns in two rounds. Difficulty past level 1 rides on board size.
   **A break of one edge is only fair against the outside of the board.** A
   disagreement belongs to the edge, not the cell, so a single interior mismatch
   implicates both neighbours equally and the game would mark one of two defensible
@@ -240,6 +244,13 @@ canvas a frame or two after the main menu has already been built at Bevy's defau
 - **`GameTimer`** (Resource) — a single `Timer`; starts paused. When it finishes,
   `tick_game_timer` transitions to `GameOverResume`. Infinite runs never expire, so
   they end only via "ENCERRAR PARTIDA" on the pause screen.
+- **`SavedRun`** (Resource, `src/game/score/`) — the run in progress, persisted as
+  `mode=score`. Only those two values: the score is where the level, the piece count
+  and the color distance all come from, and the board is dealt fresh every round, so
+  there is no position to restore — only a place in the curve. Written whenever the
+  score changes rather than on exit, because the way a browser game ends is a closed
+  tab. Cleared when a run finishes. The main menu offers it as a `CONTINUAR` card
+  above the mode list.
 - **`BestScores`** (Resource, `src/game/score/`) — per-mode personal bests, loaded at
   startup and saved on each run end. `LastRunOutcome` carries score/best/is_record to
   the game-over screen; the screen orders itself `.after(RecordOutcomeSet)` so it
@@ -253,9 +264,17 @@ canvas a frame or two after the main menu has already been built at Bevy's defau
   replayed round is drawn and hit-tested at the size it was played at.
   `PuzzleColorGame` is the broad marker used by `despaw_objects` (sic) to clear the
   board on `OnExit(Game)`.
-- **`board::layout`** — the color modes' board. Seeds on a jittered grid, then each
-  piece is the region closest to its seed (Voronoi, built by clipping the play area
-  with the perpendicular bisectors), shrunk by a random amount to open the gaps.
+- **`board::layout`** — the color modes' board. Seeds on a jittered lattice with
+  **every other row offset by half a step**, then each piece is the region closest to
+  its seed (Voronoi, built by clipping the play area with the perpendicular
+  bisectors), shrunk by a random amount to open the gaps. Three details are load
+  bearing, and dropping any of them puts the grid back: the stagger (seeds on a square
+  grid meet four neighbours and produce quadrilaterals), a ring of **ghost seeds
+  outside the frame** so edge cells are bounded by a bisector rather than by the frame,
+  and two rounds of **Lloyd relaxation** so no cell comes out too thin to keep. That
+  last one is not cosmetic — a dropped cell leaves a second background-colored hole,
+  and the player has no way to tell it from the answer. Relaxation took the drop rate
+  from 6.5% to 0.3%.
   Pieces thinner than `MIN_INRADIUS` are dropped, so **the round is sized to the
   pieces that came back, not to the count that was asked for** — a color with no piece
   to live on could be the answer. The result is stored with the round in
