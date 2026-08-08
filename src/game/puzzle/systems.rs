@@ -84,17 +84,17 @@ pub fn player_interaction(
         let mut scored = false;
         let mut colors = Vec::new();
         let mut correct_position = None;
-        let mut correct_size = Vec2::splat(puzzle.shape_size);
+        let mut correct_corners = Vec::new();
 
-        for (transform, puzzle_color, _) in object_query.iter_mut() {
+        for (_, puzzle_color, _) in object_query.iter_mut() {
             colors.push(puzzle_color.as_level_color());
 
             if puzzle_color.is_correct_color {
                 correct_position = Some(Vec2::new(puzzle_color.x, puzzle_color.y));
-                correct_size = puzzle_color.size;
+                correct_corners = puzzle_color.corners.clone();
             }
 
-            if mouse_hover(transform.translation, world_position, puzzle_color.size) && puzzle_color.is_correct_color {
+            if puzzle_color.contains(world_position) && puzzle_color.is_correct_color {
                 scored = true;
             }
         }
@@ -116,7 +116,7 @@ pub fn player_interaction(
             bonus_seconds,
             // Only meaningful on a miss, where it drives the answer reveal.
             correct_position,
-            shape_size: correct_size,
+            correct_corners,
         });
 
         if leveled_up {
@@ -153,6 +153,35 @@ pub fn player_interaction(
 
 }
 
+/// The shape of a board piece, from its outline.
+fn piece_shape(corners: &[Vec2]) -> shapes::Polygon {
+    shapes::Polygon {
+        points: corners.to_vec(),
+        closed: true,
+    }
+}
+
+/// Side of a square piece, from its outline.
+fn cell_size(corners: &[Vec2]) -> f32 {
+    corners
+        .iter()
+        .map(|corner| corner.x.abs().max(corner.y.abs()) * 2.0)
+        .fold(0.0_f32, f32::max)
+}
+
+/// A square piece, for `Mosaic`: its grid cells are pieces like any other, they
+/// are just all the same shape. Corners are relative to the cell's centre, like
+/// every other piece.
+fn square_corners(size: f32) -> Vec<Vec2> {
+    let half = size / 2.0;
+    vec![
+        Vec2::new(-half, -half),
+        Vec2::new(half, -half),
+        Vec2::new(half, half),
+        Vec2::new(-half, half),
+    ]
+}
+
 /// Draws a mosaic piece as children of its cell.
 ///
 /// One node per arm plus a hub at the centre, all in the round's color. Kept as
@@ -170,20 +199,20 @@ fn spawn_tile_arms(parent: &mut ChildBuilder, tile: Tile, size: f32, color: Colo
     }
 
     let arm_width = size * 0.32;
-    let centre = size / 2.0;
     let half_arm = arm_width / 2.0;
+    let half_cell = size / 2.0;
 
-    // The hub joins the arms, so a corner reads as one bent pipe rather than
-    // two rectangles that happen to meet.
+    // Pieces are spawned at their centre, so everything here is drawn around
+    // the origin.
     let hub = shapes::Rectangle {
-        extents: Vec2::new(arm_width, arm_width),
+        extents: Vec2::splat(arm_width),
         origin: shapes::RectangleOrigin::Center,
     };
 
     parent.spawn((
         ShapeBundle {
             path: GeometryBuilder::build_as(&hub),
-            transform: Transform::from_xyz(centre, centre, 0.01),
+            transform: Transform::from_xyz(0.0, 0.0, 0.01),
             ..default()
         },
         Fill::color(color),
@@ -192,13 +221,13 @@ fn spawn_tile_arms(parent: &mut ChildBuilder, tile: Tile, size: f32, color: Colo
     // Each arm runs from inside the hub out to the edge it points at, so the
     // two overlap and the joint has no seam. `wfc` indexes edges clockwise from
     // the top, and the board's y axis grows upward.
-    let reach = centre + half_arm;
-    let offset = (centre - half_arm) / 2.0;
+    let reach = half_cell + half_arm;
+    let offset = (half_cell - half_arm) / 2.0;
     let arms = [
-        (Vec2::new(arm_width, reach), Vec2::new(centre, centre + offset)),
-        (Vec2::new(reach, arm_width), Vec2::new(centre + offset, centre)),
-        (Vec2::new(arm_width, reach), Vec2::new(centre, centre - offset)),
-        (Vec2::new(reach, arm_width), Vec2::new(centre - offset, centre)),
+        (Vec2::new(arm_width, reach), Vec2::new(0.0, offset)),
+        (Vec2::new(reach, arm_width), Vec2::new(offset, 0.0)),
+        (Vec2::new(arm_width, reach), Vec2::new(0.0, -offset)),
+        (Vec2::new(reach, arm_width), Vec2::new(-offset, 0.0)),
     ];
 
     for (edge, (extents, position)) in edges.iter().zip(arms) {
@@ -298,12 +327,7 @@ pub fn render_game_history(
         let is_correct_color = color.is_correct_color;
         // Each square remembers its own size, so a round played on a different
         // window size still replays as the board the player actually saw.
-        let size = color.size;
-
-        let shape = shapes::Rectangle {
-            extents: size,
-            origin: shapes::RectangleOrigin::BottomLeft,
-        };
+        let shape = piece_shape(&color.corners);
 
         let plate = if color.tile.is_some() {
             Fill::color(theme::SURFACE)
@@ -323,19 +347,24 @@ pub fn render_game_history(
                     ..default()
                 },
                 plate,
-                PuzzleColor { index, is_correct_color:  color.is_correct_color, x : color.x , y:  color.y, color: color.color.clone(), size, tile: color.tile },
+                PuzzleColor { index, is_correct_color:  color.is_correct_color, x : color.x , y:  color.y, color: color.color.clone(), corners: color.corners.clone(), tile: color.tile },
             ))
             .with_children(|parent| {
                 if let Some(tile) = color.tile {
-                    spawn_tile_arms(parent, tile, size.x, color.color);
+                    spawn_tile_arms(parent, tile, cell_size(&color.corners), color.color);
                 }
             });
 
         if is_correct_color {
-            let inner_shape =  shapes::Rectangle {
-                extents: (size - Vec2::splat(20.0)).max(Vec2::splat(4.0)),
-                origin: shapes::RectangleOrigin::BottomLeft,
-            };
+            // Marks the answer on the replay, drawn as the piece shrunk toward
+            // its own centre so it follows whatever shape the piece was.
+            let inner_shape = piece_shape(
+                &color
+                    .corners
+                    .iter()
+                    .map(|corner| *corner * 0.72)
+                    .collect::<Vec<_>>(),
+            );
             commands .spawn((
                 ShapeBundle {
                     path: GeometryBuilder::build_as(&inner_shape),
@@ -395,22 +424,6 @@ pub fn store_last_interaction_state(
     if let Some(label) = streak_milestone_label(game_history.current_streak()) {
         banner_event_writer.send(BannerEvent::new(label, theme::SUCCESS));
     }
-}
-
-/// Whether a pick landed inside a piece.
-///
-/// `translation` is the piece's bottom-left corner: the shapes are built with
-/// `RectangleOrigin::BottomLeft`.
-///
-/// This used to test a 30x30 box growing up and to the right of the pick rather
-/// than the pick itself, which handed out points for tapping the gap next to
-/// the answer — and with the answer invisible, the player would have had no way
-/// to tell why.
-fn mouse_hover(translation: Vec3, point: Vec2, size: Vec2) -> bool {
-    point.x >= translation.x
-        && point.x <= translation.x + size.x
-        && point.y >= translation.y
-        && point.y <= translation.y + size.y
 }
 
 
@@ -519,34 +532,40 @@ pub fn spawn_objects(
     // mode gets the irregular cut, which is what keeps the invisible piece from
     // being a hole at a predictable address.
     let grid = puzzle.mosaic_grid();
-    let slots: Vec<(Vec2, Vec2)> = match &grid {
+    let slots: Vec<(Vec2, Vec<Vec2>)> = match &grid {
+        // A mosaic cell is a piece like any other; they are simply all the same
+        // square, because that mode's question is how pieces meet.
         Some(grid) => (0..cells.len())
-            .map(|index| (grid.cell_position(index), Vec2::splat(grid.cell_size)))
+            .map(|index| {
+                let corner = grid.cell_position(index);
+                (
+                    corner + Vec2::splat(grid.cell_size / 2.0),
+                    square_corners(grid.cell_size),
+                )
+            })
             .collect(),
         None => puzzle
             .slots()
             .iter()
-            .map(|slot| (slot.position, slot.size))
+            .map(|piece| (piece.centre, piece.corners.clone()))
             .collect(),
     };
 
     // A rough board-wide size, for anything that needs one before a piece is
     // in hand.
-    puzzle.shape_size = slots
-        .first()
-        .map(|(_, size)| size.x.min(size.y))
+    puzzle.shape_size = grid
+        .as_ref()
+        .map(|grid| grid.cell_size)
         .unwrap_or(puzzle.shape_size);
 
     let mut z = 0.0;
     for (index, color, is_correct_color, tile) in cells {
-        let Some((position, size)) = slots.get(index).copied() else {
+        let Some((centre, corners)) = slots.get(index).cloned() else {
             continue;
         };
 
-        let shape = shapes::Rectangle {
-            extents: size,
-            origin: shapes::RectangleOrigin::BottomLeft,
-        };
+        let shape = piece_shape(&corners);
+        let arm_size = cell_size(&corners);
 
         // In a mosaic the cell is a plate the piece is drawn on, so every plate
         // is the same neutral color; in the color modes the piece *is* the
@@ -557,24 +576,24 @@ pub fn spawn_objects(
             .spawn((
                 ShapeBundle {
                     path: GeometryBuilder::build_as(&shape),
-                    transform: Transform::from_xyz(position.x, position.y, z),
+                    transform: Transform::from_xyz(centre.x, centre.y, z),
                     ..default()
                 },
                 Fill::color(plate),
                 PuzzleColor {
                     index,
                     is_correct_color,
-                    x: position.x,
-                    y: position.y,
+                    x: centre.x,
+                    y: centre.y,
                     color,
-                    size,
+                    corners,
                     tile,
                 },
                 PuzzleColorGame {},
             ))
             .with_children(|parent| {
                 if let Some(tile) = tile {
-                    spawn_tile_arms(parent, tile, size.x, color);
+                    spawn_tile_arms(parent, tile, arm_size, color);
                 }
             });
 

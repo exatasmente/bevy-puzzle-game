@@ -74,7 +74,7 @@ pub fn handle_interaction_animation_events(
         screen_shake_event_writer.send(ScreenShakeEvent::miss());
 
         if let Some(correct_position) = event.correct_position {
-            spawn_answer_reveal(&mut commands, correct_position, event.shape_size);
+            spawn_answer_reveal(&mut commands, correct_position, &event.correct_corners);
         }
     }
 }
@@ -123,12 +123,14 @@ fn spawn_miss_cross(commands: &mut Commands, position: Vec2) {
     }
 }
 
-fn spawn_answer_reveal(commands: &mut Commands, position: Vec2, shape_size: Vec2) {
-    // Puzzle squares are spawned with a bottom-left origin, so this outline is
-    // positioned the same way to sit exactly on top of one.
-    let outline = shapes::Rectangle {
-        origin: shapes::RectangleOrigin::BottomLeft,
-        extents: shape_size,
+fn spawn_answer_reveal(commands: &mut Commands, position: Vec2, corners: &[Vec2]) {
+    // The outline traces the piece itself: the board is cut into polygons of
+    // different shapes, and a stand-in rectangle would point at roughly the
+    // right place while telling the player the wrong thing about what they
+    // missed.
+    let outline = shapes::Polygon {
+        points: corners.to_vec(),
+        closed: true,
     };
 
     commands.spawn((

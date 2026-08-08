@@ -2,7 +2,7 @@ use bevy::prelude::*;
 use bevy_utils::Duration;
 use rand::prelude::*;
 
-use crate::board::{self, Slot};
+use crate::board::{self, Piece};
 use crate::oklab::{self, Oklab};
 use crate::theme;
 use crate::wfc::{self, Tile};
@@ -14,10 +14,10 @@ pub struct PuzzleColor {
     pub color : Color,
     pub x : f32,
     pub y : f32,
-    /// Size of this piece. Carried per piece because the board is cut
-    /// irregularly — no two pieces share a size — and so a replayed round is
+    /// The piece's outline, relative to its centre at `x`/`y`. Carried per
+    /// piece because no two pieces share a shape, and so a replayed round is
     /// drawn and hit-tested exactly as it was played.
-    pub size : Vec2,
+    pub corners : Vec<Vec2>,
     /// The piece drawn on this cell in `Mosaic`, and `None` in every other
     /// mode. Stored per cell for the same reason `size` is: a replayed round
     /// has to redraw the board that was actually played.
@@ -31,11 +31,15 @@ impl PuzzleColor {
             x : self.x,
             y : self.y,
             is_correct_color : self.is_correct_color,
-            size : self.size,
+            corners : self.corners.clone(),
             tile : self.tile,
         }
     }
 
+    /// Whether a world-space point lands on this piece.
+    pub fn contains(&self, point : Vec2) -> bool {
+        Piece { centre : Vec2::new(self.x, self.y), corners : self.corners.clone() }.contains(point)
+    }
 }
 
 
@@ -155,10 +159,10 @@ pub struct ColorPuzzle {
     /// One piece per cell in `Mosaic`, empty in every other mode.
     #[reflect(ignore)]
     current_tiles: Vec<Tile>,
-    /// Where this round's pieces sit. Empty in `Mosaic`, which is laid out on
-    /// a grid instead.
+    /// Where this round's pieces sit and what shape they are. Empty in
+    /// `Mosaic`, which is laid out on a grid instead.
     #[reflect(ignore)]
-    current_slots: Vec<Slot>,
+    current_slots: Vec<Piece>,
     /// Columns the mosaic was generated on. Only meaningful with `current_tiles`.
     current_columns: usize,
     correct_color_index: usize,
@@ -494,8 +498,14 @@ impl ColorPuzzle {
             return;
         }
 
-        let count = color_count_for_level(level);
         let delta = color_delta_for_level(level);
+
+        // Cut the board first and take the round's size from it. The cut drops
+        // any piece too thin to tap, so asking for a count and assuming it is
+        // what you got would leave a color — possibly the answer — with no
+        // piece to live on.
+        let slots = self.cut_board(color_count_for_level(level), &mut rng);
+        let count = slots.len().max(2);
 
         // The centre of the round, kept off the extremes of lightness so the
         // colors around it have room to move in any direction and still be
@@ -549,12 +559,12 @@ impl ColorPuzzle {
         self.base_color = base_color;
         self.current_tiles = vec![];
         self.current_columns = 0;
-        self.current_slots = self.cut_board(count, &mut rng);
+        self.current_slots = slots;
         self.current_colors = colors;
     }
 
     /// Cuts this round's pieces out of the play area.
-    fn cut_board(&self, count: usize, rng: &mut ThreadRng) -> Vec<Slot> {
+    fn cut_board(&self, count: usize, rng: &mut ThreadRng) -> Vec<Piece> {
         let area = self.play_area();
         let min = Vec2::new(-area.x / 2.0, self.play_bottom());
         let max = Vec2::new(area.x / 2.0, self.play_bottom() + area.y);
@@ -562,8 +572,8 @@ impl ColorPuzzle {
         board::layout(min, max, count, rng)
     }
 
-    /// Where this round's pieces are, or an empty list in `Mosaic`.
-    pub fn slots(&self) -> &[Slot] {
+    /// This round's pieces, or an empty list in `Mosaic`.
+    pub fn slots(&self) -> &[Piece] {
         &self.current_slots
     }
 
@@ -805,13 +815,13 @@ impl ColorPuzzle {
     
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct LevelColor {
     pub color : Color,
     pub x : f32,
     pub y : f32,
     pub is_correct_color : bool,
-    pub size : Vec2,
+    pub corners : Vec<Vec2>,
     pub tile : Option<Tile>,
 }
 
@@ -858,10 +868,10 @@ impl LevelHistory {
 
     pub fn for_each_color<F>(&self, mut f: F)
     where
-        F: FnMut(usize, LevelColor),
+        F: FnMut(usize, &LevelColor),
     {
         for (index, color) in self.colors.iter().enumerate() {
-            f(index, *color);
+            f(index, color);
         }
     }
     pub fn get_correct_color(&self) -> Color {

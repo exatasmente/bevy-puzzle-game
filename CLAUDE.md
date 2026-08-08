@@ -5,9 +5,10 @@ Guidance for AI assistants working in this repository.
 ## What this project is
 
 A color-discrimination puzzle game ("Color Puzzle") built with **Bevy 0.10** in Rust.
-The board is cut into interlocking pieces of uneven size and spacing; every piece has
-its own color, and one of them is painted exactly the background color, so it is
-invisible. The player has to find it. It runs natively and in the browser via
+The board is an uneven honeycomb — convex polygons of five to seven sides, tessellated
+by Voronoi and separated by thin gaps. Every piece has its own color, and one of them
+is painted exactly the background color, so it is invisible. The player has to find
+it. It runs natively and in the browser via
 WebAssembly (a prebuilt WASM bundle is committed under `docs/` and served by GitHub
 Pages).
 
@@ -135,7 +136,7 @@ Debug keyboard shortcuts in `src/systems.rs`: `G` → Game, `M` → MainMenu,
 src/
   main.rs                     App setup, AppState, PIXELS_PER_METER/RESOLUTION consts
   theme.rs                    Design tokens: palette, type scale, spacing, button states
-  board.rs                    Irregular board cut: interlocking pieces, uneven gaps (has tests)
+  board.rs                    Voronoi honeycomb: convex pieces, uneven gaps (has tests)
   oklab.rs                    Perceptual color space; the unit the difficulty is set in
   wfc.rs                      Wave function collapse; generates the Mosaic board (has tests)
   layout.rs                   RelayoutEvent: screens rebuild when the window resizes
@@ -252,10 +253,19 @@ canvas a frame or two after the main menu has already been built at Bevy's defau
   replayed round is drawn and hit-tested at the size it was played at.
   `PuzzleColorGame` is the broad marker used by `despaw_objects` (sic) to clear the
   board on `OnExit(Game)`.
-- **`board::layout`** — the color modes' board. A guillotine cut of the play area into
-  interlocking pieces (always splitting the largest, so the sizes stay sane), each then
-  inset from its cut lines by a different amount per side. The result is stored with
-  the round in `current_slots`, so the replay redraws the board that was played.
+- **`board::layout`** — the color modes' board. Seeds on a jittered grid, then each
+  piece is the region closest to its seed (Voronoi, built by clipping the play area
+  with the perpendicular bisectors), shrunk by a random amount to open the gaps.
+  Pieces thinner than `MIN_INRADIUS` are dropped, so **the round is sized to the
+  pieces that came back, not to the count that was asked for** — a color with no piece
+  to live on could be the answer. The result is stored with the round in
+  `current_slots`, so the replay redraws the board that was played.
+- **Pieces are convex polygons, and everything downstream knows it.** `PuzzleColor`
+  carries `corners` relative to the piece's centre — which is its `Transform`, unlike
+  the old squares, which were spawned from their bottom-left corner. Hit testing is
+  `Piece::contains` (left of every edge), and the answer reveal traces the same
+  outline rather than a stand-in rectangle. `Mosaic`'s grid cells are square pieces
+  built the same way, so there is one path for both.
 - **`BoardGrid`** — `Mosaic` only. `grid_for_dimensions` sizes the grid its pattern was
   generated for and centers it in the window minus `HUD_RESERVED_HEIGHT`.
 
