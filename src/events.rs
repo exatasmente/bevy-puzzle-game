@@ -18,6 +18,8 @@ pub struct InteractionAnimationEvent {
     pub bonus_seconds: f32,
     /// Where the correct square was, so a miss can reveal the answer.
     pub correct_position: Option<Vec2>,
-    /// Size of the squares, so the reveal outline matches the board.
-    pub shape_size: f32,
+    /// The answer's outline, relative to `correct_position`, so the reveal
+    /// traces the piece the player was looking for rather than a stand-in
+    /// rectangle. Every piece is a different shape.
+    pub correct_corners: Vec<Vec2>,
 }

@@ -2,6 +2,7 @@ use bevy::prelude::*;
 use bevy_utils::Duration;
 use rand::prelude::*;
 
+use crate::board::{self, Piece};
 use crate::oklab::{self, Oklab};
 use crate::theme;
 use crate::wfc::{self, Tile};
@@ -13,10 +14,10 @@ pub struct PuzzleColor {
     pub color : Color,
     pub x : f32,
     pub y : f32,
-    /// Side of this square. Carried per square rather than read from
-    /// `ColorPuzzle::shape_size` so a replayed round is drawn and hit-tested at
-    /// the size it was actually played at, not at the current round's.
-    pub size : f32,
+    /// The piece's outline, relative to its centre at `x`/`y`. Carried per
+    /// piece because no two pieces share a shape, and so a replayed round is
+    /// drawn and hit-tested exactly as it was played.
+    pub corners : Vec<Vec2>,
     /// The piece drawn on this cell in `Mosaic`, and `None` in every other
     /// mode. Stored per cell for the same reason `size` is: a replayed round
     /// has to redraw the board that was actually played.
@@ -30,11 +31,15 @@ impl PuzzleColor {
             x : self.x,
             y : self.y,
             is_correct_color : self.is_correct_color,
-            size : self.size,
+            corners : self.corners.clone(),
             tile : self.tile,
         }
     }
 
+    /// Whether a world-space point lands on this piece.
+    pub fn contains(&self, point : Vec2) -> bool {
+        Piece { centre : Vec2::new(self.x, self.y), corners : self.corners.clone() }.contains(point)
+    }
 }
 
 
@@ -154,6 +159,10 @@ pub struct ColorPuzzle {
     /// One piece per cell in `Mosaic`, empty in every other mode.
     #[reflect(ignore)]
     current_tiles: Vec<Tile>,
+    /// Where this round's pieces sit and what shape they are. Empty in
+    /// `Mosaic`, which is laid out on a grid instead.
+    #[reflect(ignore)]
+    current_slots: Vec<Piece>,
     /// Columns the mosaic was generated on. Only meaningful with `current_tiles`.
     current_columns: usize,
     correct_color_index: usize,
@@ -196,9 +205,13 @@ pub fn streak_milestone_label(streak: usize) -> Option<&'static str> {
 /// gaps widen after that so later levels stay meaningful.
 const LEVEL_START_SCORES: [usize; 9] = [0, 5, 11, 20, 32, 47, 65, 86, 110];
 
-/// Smallest and largest number of squares on screen.
-const MIN_COLORS: usize = 4;
-const MAX_COLORS: usize = 12;
+/// Smallest and largest number of pieces on screen.
+///
+/// Higher than it was: the board is cut irregularly now, and four pieces come
+/// out as four slabs. A hidden slab is a quadrant of empty screen, which is not
+/// a puzzle. Six is the fewest that reads as a mosaic with a hole in it.
+const MIN_COLORS: usize = 6;
+const MAX_COLORS: usize = 14;
 
 /// 1-based level for a score.
 pub fn level_for_score(score: usize) -> usize {
@@ -349,6 +362,7 @@ impl ColorPuzzle {
             current_colors: vec![],
             base_color: Color::rgb(0.5, 0.5, 0.5),
             current_tiles: vec![],
+            current_slots: vec![],
             current_columns: 0,
             correct_color_index: 0,
             game_mode: GameMode::TimeTrial,
@@ -414,9 +428,13 @@ impl ColorPuzzle {
         self.width = width;
         self.height = height;
 
-        // Keep the cached square size in step with the window, so anything that
-        // reads it before the next board is spawned gets a sane value.
-        self.shape_size = self.board_grid().cell_size;
+        // Nothing is laid out yet at this point; the next round is cut against
+        // the size just stored.
+    }
+
+    /// World y of the bottom of the play area.
+    fn play_bottom(&self) -> f32 {
+        -self.height / 2.0 + BOARD_MARGIN
     }
 
     /// Play area: the window minus its margins and the strip the HUD owns.
@@ -427,53 +445,7 @@ impl ColorPuzzle {
         )
     }
 
-    /// Grid for the round currently loaded.
-    pub fn board_grid(&self) -> BoardGrid {
-        self.round_grid()
-    }
 
-    /// Grid that fits `count` squares into the play area.
-    ///
-    /// The column count is chosen by trying every one of them and keeping
-    /// whichever yields the largest square cell. That is a handful of divisions
-    /// (`count` never exceeds `MAX_COLORS`) and it beats deriving columns from
-    /// the aspect ratio, which lands badly on the tall, narrow windows this
-    /// game mostly runs in.
-    pub fn grid_for_count(&self, count: usize) -> BoardGrid {
-        let count = count.max(1);
-        let available = self.play_area();
-
-        let mut columns = 1;
-        let mut cell_size = 0.0_f32;
-        let mut empty_cells = usize::MAX;
-
-        for candidate in 1..=count {
-            let rows = (count + candidate - 1) / candidate;
-            let width = (available.x - BOARD_GAP * (candidate - 1) as f32) / candidate as f32;
-            let height = (available.y - BOARD_GAP * (rows - 1) as f32) / rows as f32;
-            let size = width.min(height);
-            let empty = rows * candidate - count;
-
-            // Bigger squares win. Between two layouts that are within a couple
-            // of percent of each other, take the one that leaves fewer holes in
-            // the last row — a full rectangle reads as a board, a ragged one
-            // reads as a mistake.
-            let clearly_bigger = size > cell_size * 1.02;
-            let tied_and_tidier = size > cell_size * 0.98 && empty < empty_cells;
-
-            if clearly_bigger || tied_and_tidier {
-                // The chosen layout's own size, not the largest seen: taking the
-                // tidier of two near-equal layouts must not leave the board
-                // measured by the other one's cell.
-                cell_size = size;
-                columns = candidate;
-                empty_cells = empty;
-            }
-        }
-
-        let rows = (count + columns - 1) / columns;
-        self.grid_from(columns, rows, count, cell_size)
-    }
 
     /// Grid with the dimensions fixed by the caller.
     ///
@@ -526,29 +498,115 @@ impl ColorPuzzle {
             return;
         }
 
-        let count = color_count_for_level(level);
         let delta = color_delta_for_level(level);
 
-        // A base the whole board shares, kept off the extremes of lightness so
-        // the odd color has room to move in any direction and still be
+        // Cut the board first and take the round's size from it. The cut drops
+        // any piece too thin to tap, so asking for a count and assuming it is
+        // what you got would leave a color — possibly the answer — with no
+        // piece to live on.
+        let slots = self.cut_board(color_count_for_level(level), &mut rng);
+        let count = slots.len().max(2);
+
+        // The centre of the round, kept off the extremes of lightness so the
+        // colors around it have room to move in any direction and still be
         // displayable.
         let base_lab = Self::random_base(&mut rng);
         let base_color = oklab::to_color(base_lab).unwrap_or(Color::rgb(0.5, 0.5, 0.5));
 
+        // Every square gets its own color. They used to be literally identical,
+        // which read as a flat wall of one paint and made the odd square a
+        // difference from its *neighbours* rather than from the group.
+        //
+        // Each distractor is nudged off the base by at most `CLUSTER` of the
+        // round's delta, so the group stays a tight cluster: the widest gap
+        // inside it is 2 * CLUSTER * delta, while the odd color sits at least
+        // (1 - CLUSTER) * delta from every one of them. With CLUSTER at 0.22
+        // that is 0.44 against 0.78 — the outlier is still the outlier by a
+        // wide margin, and there is exactly one defensible answer.
+        const CLUSTER: f32 = 0.22;
+
+        let mut labs: Vec<Oklab> = Vec::with_capacity(count);
+        let mut colors: Vec<Color> = Vec::with_capacity(count);
+
+        while colors.len() + 1 < count {
+            let amount = rng.gen_range(CLUSTER * 0.45..CLUSTER) * delta;
+            let Some((lab, color)) = Self::nudge(&mut rng, base_lab, amount) else {
+                continue;
+            };
+
+            // No two squares may share a color: a repeat invites the player to
+            // read the pair as a rule of its own.
+            let separation = delta * CLUSTER * 0.4;
+            if labs.iter().any(|other| Self::distance(*other, lab) < separation) {
+                continue;
+            }
+
+            labs.push(lab);
+            colors.push(color);
+        }
+
         // The odd one out. Its direction is random, but weighted away from pure
-        // lightness: a square that is simply lighter than its neighbours is the
+        // lightness: a square that is simply lighter than the rest is the
         // easiest difference the visual system has, and letting the dice pick it
         // half the time made levels swing between trivial and hard.
-        let odd_color = Self::odd_color(&mut rng, base_lab, delta).unwrap_or(base_color);
+        let odd_color = Self::nudge_chromatic(&mut rng, base_lab, delta)
+            .map(|(_, color)| color)
+            .unwrap_or(base_color);
 
-        let mut colors = vec![base_color; count];
         self.correct_color_index = rng.gen_range(0..count);
-        colors[self.correct_color_index] = odd_color;
+        colors.insert(self.correct_color_index, odd_color);
 
         self.base_color = base_color;
         self.current_tiles = vec![];
         self.current_columns = 0;
+        self.current_slots = slots;
         self.current_colors = colors;
+    }
+
+    /// Cuts this round's pieces out of the play area.
+    fn cut_board(&self, count: usize, rng: &mut ThreadRng) -> Vec<Piece> {
+        let area = self.play_area();
+        let min = Vec2::new(-area.x / 2.0, self.play_bottom());
+        let max = Vec2::new(area.x / 2.0, self.play_bottom() + area.y);
+
+        board::layout(min, max, count, rng)
+    }
+
+    /// This round's pieces, or an empty list in `Mosaic`.
+    pub fn slots(&self) -> &[Piece] {
+        &self.current_slots
+    }
+
+    /// Perceptual distance between two colors.
+    fn distance(a: Oklab, b: Oklab) -> f32 {
+        let dl = a.l - b.l;
+        let da = a.a - b.a;
+        let db = a.b - b.b;
+        (dl * dl + da * da + db * db).sqrt()
+    }
+
+    /// Moves `base` by `amount` in a random direction that stays displayable.
+    fn nudge(rng: &mut ThreadRng, base: Oklab, amount: f32) -> Option<(Oklab, Color)> {
+        for _ in 0..24 {
+            let hue = rng.gen_range(0.0..std::f32::consts::TAU);
+            let lightness_share = rng.gen_range(-0.6_f32..0.6);
+            let chromatic_share = (1.0 - lightness_share * lightness_share).sqrt();
+
+            let candidate = base.offset(
+                (
+                    lightness_share,
+                    chromatic_share * hue.cos(),
+                    chromatic_share * hue.sin(),
+                ),
+                amount,
+            );
+
+            if let Some(color) = oklab::to_color(candidate) {
+                return Some((candidate, color));
+            }
+        }
+
+        None
     }
 
     /// Builds a `Mosaic` round: a tiling that fits together everywhere except
@@ -558,6 +616,7 @@ impl ColorPuzzle {
     /// second variable would only muddy which rule the player is being asked to
     /// apply.
     fn generate_mosaic(&mut self, level: usize, rng: &mut ThreadRng) {
+        self.current_slots = vec![];
         let (columns, rows) = mosaic_dimensions_for_level(level);
         let mosaic = wfc::generate(columns, rows, mosaic_violations_for_level(level), rng);
 
@@ -591,25 +650,26 @@ impl ColorPuzzle {
         Oklab::from_lch(lightness, 0.0, hue)
     }
 
-    /// A color exactly `delta` away from `base`, in a direction that keeps it
-    /// displayable. `None` if no such direction was found.
-    fn odd_color(rng: &mut ThreadRng, base: Oklab, delta: f32) -> Option<Color> {
+    /// Like [`Self::nudge`], but mostly chromatic: the lightness share is
+    /// capped so the difference usually has to be judged as a hue or
+    /// saturation shift rather than "that one is brighter".
+    fn nudge_chromatic(rng: &mut ThreadRng, base: Oklab, amount: f32) -> Option<(Oklab, Color)> {
         for _ in 0..48 {
             let hue = rng.gen_range(0.0..std::f32::consts::TAU);
-            // Mostly chromatic. The lightness share is capped so the difference
-            // usually has to be judged as a hue or saturation shift.
             let lightness_share = rng.gen_range(-0.45_f32..0.45);
             let chromatic_share = (1.0 - lightness_share * lightness_share).sqrt();
 
-            let direction = (
-                lightness_share,
-                chromatic_share * hue.cos(),
-                chromatic_share * hue.sin(),
+            let candidate = base.offset(
+                (
+                    lightness_share,
+                    chromatic_share * hue.cos(),
+                    chromatic_share * hue.sin(),
+                ),
+                amount,
             );
 
-            let candidate = base.offset(direction, delta);
             if let Some(color) = oklab::to_color(candidate) {
-                return Some(color);
+                return Some((candidate, color));
             }
         }
 
@@ -648,17 +708,25 @@ impl ColorPuzzle {
         Some(score_for_level(level + 1).saturating_sub(self.score))
     }
 
-    /// The board background for this round.
+    /// The background for this round.
     ///
-    /// It is the app's dark ground, pulled a little way toward the round's own
-    /// hue so the screen still changes character every round. What it is *not*
-    /// is any square's color: the puzzle used to paint the background with the
-    /// target color, which meant the correct square was invisible and the game
-    /// was really "spot the gap in the layout" — a pop-out the eye solves
-    /// before it has compared anything. The tint is kept far enough away that
-    /// no square can be identified by comparing it to the background.
+    /// In the color modes this is *exactly* the answer's color, so the piece
+    /// the player is looking for is invisible and has to be found from the
+    /// negative space its neighbours leave. That only works because the board
+    /// is cut irregularly — see `src/board.rs`, which explains why the same
+    /// idea on a grid collapses into "spot the empty cell".
+    ///
+    /// `Mosaic` is the exception: its puzzle is a pattern, so its pieces all
+    /// have to be visible, and it gets a dimmed ground instead.
     pub fn background_color(&self) -> Color {
-        oklab::mix(theme::BACKGROUND, self.base_color, 0.16)
+        if self.game_mode.is_mosaic() {
+            return oklab::mix(theme::BACKGROUND, self.base_color, 0.28);
+        }
+
+        self.current_colors
+            .get(self.correct_color_index)
+            .copied()
+            .unwrap_or(self.base_color)
     }
 
     /// The flat color every square wears while a `Memory` round is hidden.
@@ -731,28 +799,29 @@ impl ColorPuzzle {
         }
     }
 
-    /// The grid this round is laid out on.
+    /// The grid a `Mosaic` round is laid out on.
     ///
-    /// A mosaic keeps the dimensions it was generated for; every other mode
-    /// lets the board pick whatever shape fits the window best.
-    pub fn round_grid(&self) -> BoardGrid {
-        if self.current_columns > 0 && !self.current_tiles.is_empty() {
-            let rows = self.current_tiles.len() / self.current_columns;
-            return self.grid_for_dimensions(self.current_columns, rows);
+    /// Only `Mosaic` has one. Its puzzle is about how pieces meet, so its
+    /// pieces have to be laid out where they can meet; the color modes are cut
+    /// irregularly instead — see [`Self::slots`].
+    pub fn mosaic_grid(&self) -> Option<BoardGrid> {
+        if self.current_columns == 0 || self.current_tiles.is_empty() {
+            return None;
         }
 
-        self.grid_for_count(self.current_colors.len().max(1))
+        let rows = self.current_tiles.len() / self.current_columns;
+        Some(self.grid_for_dimensions(self.current_columns, rows))
     }
     
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct LevelColor {
     pub color : Color,
     pub x : f32,
     pub y : f32,
     pub is_correct_color : bool,
-    pub size : f32,
+    pub corners : Vec<Vec2>,
     pub tile : Option<Tile>,
 }
 
@@ -799,10 +868,10 @@ impl LevelHistory {
 
     pub fn for_each_color<F>(&self, mut f: F)
     where
-        F: FnMut(usize, LevelColor),
+        F: FnMut(usize, &LevelColor),
     {
         for (index, color) in self.colors.iter().enumerate() {
-            f(index, *color);
+            f(index, color);
         }
     }
     pub fn get_correct_color(&self) -> Color {

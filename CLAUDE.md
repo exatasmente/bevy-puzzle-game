@@ -5,17 +5,25 @@ Guidance for AI assistants working in this repository.
 ## What this project is
 
 A color-discrimination puzzle game ("Color Puzzle") built with **Bevy 0.10** in Rust.
-The player is shown a grid of squares that all share one color except a single odd
-one, and must tap the odd one. It runs natively and in the browser via WebAssembly (a
-prebuilt WASM bundle is committed under `docs/` and served by GitHub Pages).
+The board is an uneven honeycomb — convex polygons of five to seven sides, tessellated
+by Voronoi and separated by thin gaps. Every piece has its own color, and one of them
+is painted exactly the background color, so it is invisible. The player has to find
+it. It runs natively and in the browser via
+WebAssembly (a prebuilt WASM bundle is committed under `docs/` and served by GitHub
+Pages).
 
-**The board never hides the answer in the background.** An earlier version painted the
-window with the target color, so the correct square was invisible and the task was
-really "spot the gap in the layout" — a pop-out the visual system solves in
-milliseconds, which made the color-distance difficulty dial almost irrelevant. The
-background is now the app's dark ground with a hint of the round's hue, and the round
-is decided by comparing squares to each other. Do not reintroduce a background that
-matches any square.
+**The hidden piece and the irregular cut are one design, and neither survives without
+the other.** A version of this game laid the pieces out on a regular grid, and it was
+trivial: the hidden piece became an empty cell at a known address, which the visual
+system finds pre-attentively without comparing any colors, and the difficulty dial
+stopped mattering. The irregular cut removes the address. The pieces still *tile* the
+play area rather than floating in it, because a hole in a mass of interlocking pieces
+is bounded by its neighbours' edges and can be read from them — pieces scattered over
+empty space would leave nothing to infer from and the round would be a lottery. See
+`src/board.rs`.
+
+So: do not put the pieces on a grid, and do not make the answer visible. `Mosaic` is
+the one mode that does both, because its puzzle is a pattern rather than a color.
 
 The crate is still named `bevy-tetris` in `Cargo.toml` (leftover from the template
 this project started from) — the game itself has nothing to do with Tetris. Don't
@@ -128,6 +136,7 @@ Debug keyboard shortcuts in `src/systems.rs`: `G` → Game, `M` → MainMenu,
 src/
   main.rs                     App setup, AppState, PIXELS_PER_METER/RESOLUTION consts
   theme.rs                    Design tokens: palette, type scale, spacing, button states
+  board.rs                    Voronoi honeycomb: convex pieces, uneven gaps (has tests)
   oklab.rs                    Perceptual color space; the unit the difficulty is set in
   wfc.rs                      Wave function collapse; generates the Mosaic board (has tests)
   layout.rs                   RelayoutEvent: screens rebuild when the window resizes
@@ -181,14 +190,21 @@ canvas a frame or two after the main menu has already been built at Bevy's defau
 `components.rs` holds the data model, `systems.rs` the behavior.
 
 - **`ColorPuzzle`** (Resource, `Reflect`) — the puzzle state machine: score,
-  `current_colors`, `base_color`, `correct_color_index`, window dimensions.
-  `background_color()` is the app ground mixed 16% toward the round's base — never any
-  square's color. `is_correct_color(index)` compares *indices*, because every square
-  but one now shares a color by design.
+  `current_colors`, `current_slots`, `base_color`, `correct_color_index`, window
+  dimensions. `background_color()` returns the answer's own color, which is what makes
+  it invisible; in `Mosaic` it returns a dimmed ground instead, because that mode's
+  pieces all have to be seen. `is_correct_color(index)` compares *indices*.
+- **Every piece has its own color.** The distractors are jittered inside a cluster of
+  radius `CLUSTER` (0.22) times the level's delta, so the widest gap inside the group
+  is 0.44 of the delta while the answer sits at least 0.78 from all of them — one
+  defensible answer, and no two pieces painted the same. Repeats used to read as a
+  rule of their own.
 - **Difficulty** is a 1-based level derived from the score via the `LEVEL_START_SCORES`
   table (`level_for_score`, `score_for_level`, `progress_to_next_level`). Three dials
-  move with it: `color_count_for_level` (4 → 12 squares), `color_delta_for_level`
-  (0.080 → 0.018) and, in `Memory`, `preview_seconds_for_level` (1.7s → 0.7s).
+  move with it: `color_count_for_level` (6 → 14 pieces), `color_delta_for_level`
+  (0.080 → 0.018) and, in `Memory`, `preview_seconds_for_level` (1.7s → 0.7s). The
+  delta is how far the *visible* pieces sit from the ground: the closer they get, the
+  harder the hole is to pick out of them.
 - **Color generation** lives in `generate_colors()` and is written in **Oklab**
   (`src/oklab.rs`), not sRGB. A round is one base color plus one odd color exactly
   `color_delta_for_level` away from it in a random, mostly-chromatic direction. The
@@ -237,15 +253,25 @@ canvas a frame or two after the main menu has already been built at Bevy's defau
   replayed round is drawn and hit-tested at the size it was played at.
   `PuzzleColorGame` is the broad marker used by `despaw_objects` (sic) to clear the
   board on `OnExit(Game)`.
-- **`BoardGrid`** — the board layout. `ColorPuzzle::grid_for_count` picks the column
-  count that yields the largest square cell, centers the grid in the window minus
-  `HUD_RESERVED_HEIGHT`, and centers a short last row. Squares are never placed at
-  random: the game is a color comparison, and a grid is what lets the eye do it.
+- **`board::layout`** — the color modes' board. Seeds on a jittered grid, then each
+  piece is the region closest to its seed (Voronoi, built by clipping the play area
+  with the perpendicular bisectors), shrunk by a random amount to open the gaps.
+  Pieces thinner than `MIN_INRADIUS` are dropped, so **the round is sized to the
+  pieces that came back, not to the count that was asked for** — a color with no piece
+  to live on could be the answer. The result is stored with the round in
+  `current_slots`, so the replay redraws the board that was played.
+- **Pieces are convex polygons, and everything downstream knows it.** `PuzzleColor`
+  carries `corners` relative to the piece's centre — which is its `Transform`, unlike
+  the old squares, which were spawned from their bottom-left corner. Hit testing is
+  `Piece::contains` (left of every edge), and the answer reveal traces the same
+  outline rather than a stand-in rectangle. `Mosaic`'s grid cells are square pieces
+  built the same way, so there is one path for both.
+- **`BoardGrid`** — `Mosaic` only. `grid_for_dimensions` sizes the grid its pattern was
+  generated for and centers it in the window minus `HUD_RESERVED_HEIGHT`.
 
 Round flow: `start_puzzle_level` (OnEnter Game) sizes the puzzle to the window and
-fires `StartLevelEvent` → `spawn_objects` despawns the old board, lays the new squares
-out on the `BoardGrid` for their count and writes the cell size back to
-`ColorPuzzle::shape_size` →
+fires `StartLevelEvent` → `spawn_objects` despawns the old board and lays the new
+pieces out on `current_slots` (or, in `Mosaic`, on `mosaic_grid()`) →
 `player_interaction` hit-tests mouse release / touch against the squares, sends
 `InteractionAnimationEvent` + `LastInteractionEvent` and another `StartLevelEvent` →
 `store_last_interaction_state` appends to `GameHistory`.
@@ -279,9 +305,11 @@ to NDC without flipping y, so it wants a bottom-left origin — which is what
 through in winit's top-left convention, so `player_interaction` flips those before
 converting. Getting this wrong mirrors every pick vertically.
 
-The background is the camera clear color. `BackgroundTranstion` (`src/systems.rs`,
-spawned on the camera entity) lerps from the previous round's background to the
-current one over `transition_seconds`; `background_transition` applies it each
+The background is the camera clear color, and in the color modes it *is* the answer.
+`BackgroundTranstion` (`src/systems.rs`, spawned on the camera entity) lerps from the
+previous round's color to the current one over `transition_seconds`; that travel
+between the colors the rounds pick is part of the game's feel. `background_transition`
+applies it each
 frame. `player_interaction` **ignores input while a transition is running** — if new
 input handling seems dead, check `is_in_transition()` first.
 
@@ -353,9 +381,9 @@ border color with `HAIRLINE` padding, containing the real panel — see
 added outside its width. Both mistakes push whole screens off the edge, and both were
 in this codebase.
 
-The board squares are deliberately flat — no stroke, no glow, unlike the mock-up's
-blocks. An outline in the square's own color would make the odd square identifiable
-from its edge rather than its fill, which is the entire puzzle.
+The board pieces are deliberately flat — no stroke, no glow, unlike the mock-up's
+blocks. Any outline at all would draw the hidden piece's border and hand over the
+answer.
 
 ### Dead code to be aware of
 
