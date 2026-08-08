@@ -187,12 +187,20 @@ Spawn on `OnEnter(state)`, despawn on `OnExit(state)`, gate per-frame systems wi
   `LevelColor`s, which was correct, whether it scored) plus aggregate stats
   (`levels_played`, `total_score`, `max_streak`, `total_time`). Drives both the
   history menu and the level replay.
-- **`PuzzleColor`** (Component) — one per rendered square. `PuzzleColorGame` is the
-  broad marker used by `despaw_objects` (sic) to clear the board on `OnExit(Game)`.
+- **`PuzzleColor`** (Component) — one per rendered square, carrying its position and
+  its `size`. Size is stored per square, not read from `ColorPuzzle::shape_size`, so a
+  replayed round is drawn and hit-tested at the size it was played at.
+  `PuzzleColorGame` is the broad marker used by `despaw_objects` (sic) to clear the
+  board on `OnExit(Game)`.
+- **`BoardGrid`** — the board layout. `ColorPuzzle::grid_for_count` picks the column
+  count that yields the largest square cell, centers the grid in the window minus
+  `HUD_RESERVED_HEIGHT`, and centers a short last row. Squares are never placed at
+  random: the game is a color comparison, and a grid is what lets the eye do it.
 
 Round flow: `start_puzzle_level` (OnEnter Game) sizes the puzzle to the window and
-fires `StartLevelEvent` → `spawn_objects` despawns the old board and spawns the new
-squares at non-overlapping random positions (rejection sampling, 100 tries max) →
+fires `StartLevelEvent` → `spawn_objects` despawns the old board, lays the new squares
+out on the `BoardGrid` for their count and writes the cell size back to
+`ColorPuzzle::shape_size` →
 `player_interaction` hit-tests mouse release / touch against the squares, sends
 `InteractionAnimationEvent` + `LastInteractionEvent` and another `StartLevelEvent` →
 `store_last_interaction_state` appends to `GameHistory`.
@@ -217,8 +225,14 @@ inferring the result downstream.
 
 Rendering uses **bevy_prototype_lyon** `ShapeBundle` + `Fill`, not sprites. Squares
 use `RectangleOrigin::BottomLeft`, so a square's `Transform` is its bottom-left
-corner — `mouse_hover`/`cord_is_intersecting` in `systems.rs` depend on this. Depth
-is handled by incrementing `z` by 0.1 per square.
+corner — `mouse_hover` in `systems.rs` depends on this. Depth is handled by
+incrementing `z` by 0.1 per square.
+
+**Pointer coordinates.** Bevy 0.10's `viewport_to_world_2d` maps its argument straight
+to NDC without flipping y, so it wants a bottom-left origin — which is what
+`Window::cursor_position` gives. Touches are the exception: `bevy_winit` passes them
+through in winit's top-left convention, so `player_interaction` flips those before
+converting. Getting this wrong mirrors every pick vertically.
 
 The background is the camera clear color. `BackgroundTranstion` (`src/systems.rs`,
 spawned on the camera entity) lerps from the previous round's target color to the
@@ -241,6 +255,13 @@ input handling seems dead, check `is_in_transition()` first.
 - All colors, font sizes and spacing come from `src/theme.rs`. Feature `styles.rs`
   files re-export from it and keep only their own layout `Style` consts — do not
   reintroduce per-screen palettes.
+- **Build every label with `theme::wrapped_text`, and size cards and buttons in
+  pixels** (`theme::content_width` from the window width, `theme::button_style`).
+  `digital7mono.ttf` draws well past the vertical metrics it reports, so wrapped lines
+  and merely-adjacent nodes overlap into a smear. `wrapped_text` therefore keeps each
+  label on one line — shrinking the type via `GLYPH_ADVANCE_RATIO` until it fits —
+  and adds vertical margin. Percentage-width buttons cannot be fitted against and will
+  overflow again.
 - **User-facing strings must be unaccented ASCII.** `digital7mono.ttf` is a
   seven-segment display font with a narrow glyph set: "ç", "ó" and symbols like "✓"
   render as blanks. Write "HISTORICO", "SEQUENCIA", "OK"/"X".

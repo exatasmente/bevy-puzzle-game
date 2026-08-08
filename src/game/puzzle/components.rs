@@ -9,6 +9,10 @@ pub struct PuzzleColor {
     pub color : Color,
     pub x : f32,
     pub y : f32,
+    /// Side of this square. Carried per square rather than read from
+    /// `ColorPuzzle::shape_size` so a replayed round is drawn and hit-tested at
+    /// the size it was actually played at, not at the current round's.
+    pub size : f32,
 }
 
 impl PuzzleColor {
@@ -18,10 +22,10 @@ impl PuzzleColor {
             x : self.x,
             y : self.y,
             is_correct_color : self.is_correct_color,
-            
+            size : self.size,
         }
     }
-    
+
 }
 
 
@@ -95,7 +99,6 @@ pub struct ColorPuzzle {
     pub transition_seconds: f32,
     pub width: f32,
     pub height: f32,
-    pub screen_padding : f32,
 }
 
 
@@ -177,6 +180,72 @@ pub fn color_count_for_level(level: usize) -> usize {
     (MIN_COLORS + level.saturating_sub(1)).min(MAX_COLORS)
 }
 
+// --- Board grid ------------------------------------------------------------
+//
+// The board used to be squares dropped at random positions with rejection
+// sampling. That made every round a different search problem: the eye had to
+// find the squares before it could compare them, difficulty swung with whatever
+// the sampler happened to produce, and squares could land under the HUD. A grid
+// puts the comparison — which is the actual game — in front of the player, and
+// makes the difficulty curve mean what the level table says it means.
+
+/// Vertical strip at the top of the window owned by the HUD. The board is laid
+/// out below it, so no square is ever hidden behind the score or the pause
+/// button.
+pub const HUD_RESERVED_HEIGHT: f32 = 132.0;
+
+/// Gap between neighbouring cells. Big enough to read as separate squares,
+/// small enough that adjacent colors can still be compared edge to edge.
+pub const BOARD_GAP: f32 = 10.0;
+
+/// The board never touches the window edge.
+pub const BOARD_MARGIN: f32 = 16.0;
+
+/// Cells stop growing here, so a four-square round on a desktop window does not
+/// turn into four billboards.
+pub const MAX_CELL_SIZE: f32 = 160.0;
+
+/// Where every square of a round goes.
+#[derive(Debug, Clone, Copy)]
+pub struct BoardGrid {
+    pub columns: usize,
+    pub rows: usize,
+    pub count: usize,
+    pub cell_size: f32,
+    /// World position of the bottom-left corner of the bottom-left cell.
+    pub origin: Vec2,
+}
+
+impl BoardGrid {
+    /// How many squares sit on `row` (0 = top). Only the last row can be short.
+    fn items_in_row(&self, row: usize) -> usize {
+        let remaining = self.count.saturating_sub(row * self.columns);
+        remaining.min(self.columns)
+    }
+
+    /// Bottom-left corner of the square at `index`, filling left to right and
+    /// top to bottom.
+    pub fn cell_position(&self, index: usize) -> Vec2 {
+        let column = index % self.columns;
+        let row = index / self.columns;
+        let step = self.cell_size + BOARD_GAP;
+
+        // A short last row is centered under the others; left-aligning it makes
+        // the whole board look accidentally off-center.
+        let row_width = self.items_in_row(row) as f32 * self.cell_size
+            + BOARD_GAP * self.items_in_row(row).saturating_sub(1) as f32;
+        let full_width = self.columns as f32 * self.cell_size
+            + BOARD_GAP * self.columns.saturating_sub(1) as f32;
+        let row_offset = (full_width - row_width) / 2.0;
+
+        Vec2::new(
+            self.origin.x + row_offset + column as f32 * step,
+            // Rows are counted from the top, but y grows upward.
+            self.origin.y + (self.rows.saturating_sub(1) - row) as f32 * step,
+        )
+    }
+}
+
 
 impl ColorPuzzle {
    pub  fn new() -> Self {
@@ -191,7 +260,6 @@ impl ColorPuzzle {
             transition_seconds: 1.,
             width: 800.0,
             height: 600.0,
-            screen_padding : 50.0,
         };
 
         puzzle.setup(&GameMode::TimeTrial);
@@ -230,20 +298,82 @@ impl ColorPuzzle {
         self.width = width;
         self.height = height;
 
-
-        self.shape_size = if width / 4.0 > 140.0 {
-            140.0
-        } else {
-            width / 4.0
-        };
+        // Keep the cached square size in step with the window, so anything that
+        // reads it before the next board is spawned gets a sane value.
+        self.shape_size = self.board_grid().cell_size;
     }
 
-    pub fn get_width(&self) -> f32 {
-        self.width - self.screen_padding
+    /// Play area: the window minus its margins and the strip the HUD owns.
+    fn play_area(&self) -> Vec2 {
+        Vec2::new(
+            (self.width - BOARD_MARGIN * 2.0).max(1.0),
+            (self.height - HUD_RESERVED_HEIGHT - BOARD_MARGIN * 2.0).max(1.0),
+        )
     }
 
-    pub fn get_height(&self) -> f32 {
-        self.height - self.screen_padding
+    /// Grid for the round currently loaded into `current_colors`.
+    pub fn board_grid(&self) -> BoardGrid {
+        self.grid_for_count(self.current_colors.len().max(1))
+    }
+
+    /// Grid that fits `count` squares into the play area.
+    ///
+    /// The column count is chosen by trying every one of them and keeping
+    /// whichever yields the largest square cell. That is a handful of divisions
+    /// (`count` never exceeds `MAX_COLORS`) and it beats deriving columns from
+    /// the aspect ratio, which lands badly on the tall, narrow windows this
+    /// game mostly runs in.
+    pub fn grid_for_count(&self, count: usize) -> BoardGrid {
+        let count = count.max(1);
+        let available = self.play_area();
+
+        let mut columns = 1;
+        let mut cell_size = 0.0_f32;
+        let mut empty_cells = usize::MAX;
+
+        for candidate in 1..=count {
+            let rows = (count + candidate - 1) / candidate;
+            let width = (available.x - BOARD_GAP * (candidate - 1) as f32) / candidate as f32;
+            let height = (available.y - BOARD_GAP * (rows - 1) as f32) / rows as f32;
+            let size = width.min(height);
+            let empty = rows * candidate - count;
+
+            // Bigger squares win. Between two layouts that are within a couple
+            // of percent of each other, take the one that leaves fewer holes in
+            // the last row — a full rectangle reads as a board, a ragged one
+            // reads as a mistake.
+            let clearly_bigger = size > cell_size * 1.02;
+            let tied_and_tidier = size > cell_size * 0.98 && empty < empty_cells;
+
+            if clearly_bigger || tied_and_tidier {
+                // The chosen layout's own size, not the largest seen: taking the
+                // tidier of two near-equal layouts must not leave the board
+                // measured by the other one's cell.
+                cell_size = size;
+                columns = candidate;
+                empty_cells = empty;
+            }
+        }
+
+        let rows = (count + columns - 1) / columns;
+        let cell_size = cell_size.min(MAX_CELL_SIZE).max(8.0);
+
+        let grid_width = columns as f32 * cell_size + BOARD_GAP * (columns - 1) as f32;
+        let grid_height = rows as f32 * cell_size + BOARD_GAP * (rows - 1) as f32;
+
+        // Center the grid in the play area rather than in the window: the HUD
+        // takes its space off the top, so window-centered would sit low.
+        let play_top = self.height / 2.0 - HUD_RESERVED_HEIGHT - BOARD_MARGIN;
+        let play_bottom = -self.height / 2.0 + BOARD_MARGIN;
+        let center_y = (play_top + play_bottom) / 2.0;
+
+        BoardGrid {
+            columns,
+            rows,
+            count,
+            cell_size,
+            origin: Vec2::new(-grid_width / 2.0, center_y - grid_height / 2.0),
+        }
     }
 
     pub fn get_correct_color_index(&self) -> usize {
@@ -412,6 +542,7 @@ pub struct LevelColor {
     pub x : f32,
     pub y : f32,
     pub is_correct_color : bool,
+    pub size : f32,
 }
 
 pub struct LastInteractionEvent {

@@ -20,8 +20,14 @@ pub fn spawn_game_over_menu(
     asset_server: Res<AssetServer>,
     game_history: Res<GameHistory>,
     outcome: Res<LastRunOutcome>,
+    window_query: Query<&Window>,
 ) {
-    build_game_over_menu(&mut commands, &asset_server, &game_history, &outcome);
+    let width = window_query
+        .get_single()
+        .map(|window| theme::content_width(window.width()))
+        .unwrap_or(theme::CONTENT_MAX_WIDTH);
+
+    build_game_over_menu(&mut commands, &asset_server, &game_history, &outcome, width);
 }
 
 pub fn build_game_over_menu(
@@ -29,7 +35,9 @@ pub fn build_game_over_menu(
     asset_server: &Res<AssetServer>,
     game_history: &Res<GameHistory>,
     outcome: &Res<LastRunOutcome>,
+    width: f32,
 ) -> Entity {
+    let text_width = theme::button_text_width(width);
     commands
         .spawn((
             NodeBundle {
@@ -48,10 +56,11 @@ pub fn build_game_over_menu(
                     ..default()
                 })
                 .with_children(|parent| {
-                    parent.spawn(TextBundle {
-                        text: Text::from_section("PONTOS", get_label_text_style(asset_server)),
-                        ..default()
-                    });
+                    parent.spawn(theme::wrapped_text(
+                        "PONTOS",
+                        get_label_text_style(asset_server),
+                        width,
+                    ));
 
                     // The headline number, in the celebration color when it is
                     // a record so the good news is legible before it is read.
@@ -60,13 +69,11 @@ pub fn build_game_over_menu(
                     } else {
                         theme::ON_SURFACE
                     };
-                    let mut score_text = parent.spawn(TextBundle {
-                        text: Text::from_section(
-                            format!("{}", outcome.score),
-                            theme::text_display(asset_server, score_color),
-                        ),
-                        ..default()
-                    });
+                    let mut score_text = parent.spawn(theme::wrapped_text(
+                        format!("{}", outcome.score),
+                        theme::text_display(asset_server, score_color),
+                        width,
+                    ));
                     if outcome.is_record {
                         // The loudest animation in the game, spent on the rarest
                         // moment it has.
@@ -81,13 +88,11 @@ pub fn build_game_over_menu(
                     } else {
                         (format!("RECORDE {}", outcome.best), theme::MUTED)
                     };
-                    parent.spawn(TextBundle {
-                        text: Text::from_section(
-                            record_text,
-                            theme::text(asset_server, theme::TEXT_SM, record_color),
-                        ),
-                        ..default()
-                    });
+                    parent.spawn(theme::wrapped_text(
+                        record_text,
+                        theme::text(asset_server, theme::TEXT_SM, record_color),
+                        width,
+                    ));
 
                     let mut rows = vec![
                         ("DESAFIOS", format!("{}", game_history.levels_played)),
@@ -101,28 +106,26 @@ pub fn build_game_over_menu(
                     for (index, (label, value)) in rows.into_iter().enumerate() {
                         parent
                             .spawn(NodeBundle {
-                                style: STAT_ROW_STYLE,
+                                style: stat_row_style(width),
                                 ..default()
                             })
                             .with_children(|parent| {
+                                // Label and value split the row, so neither can
+                                // push the other off the edge.
                                 parent.spawn((
-                                    TextBundle {
-                                        text: Text::from_section(
-                                            label,
-                                            get_label_text_style(asset_server),
-                                        ),
-                                        ..default()
-                                    },
+                                    theme::wrapped_text(
+                                        label,
+                                        get_label_text_style(asset_server),
+                                        width * 0.6,
+                                    ),
                                     RevealIn::staggered(index),
                                 ));
                                 parent.spawn((
-                                    TextBundle {
-                                        text: Text::from_section(
-                                            value,
-                                            get_resume_text_style(asset_server),
-                                        ),
-                                        ..default()
-                                    },
+                                    theme::wrapped_text(
+                                        value,
+                                        get_resume_text_style(asset_server),
+                                        width * 0.35,
+                                    ),
                                     RevealIn::staggered(index),
                                 ));
                             });
@@ -132,7 +135,8 @@ pub fn build_game_over_menu(
                         parent,
                         asset_server,
                         "JOGAR NOVAMENTE",
-                        PRIMARY_BUTTON_STYLE,
+                        primary_button_style(width),
+                        text_width,
                         BUTTON_PRIMARY,
                         PlayAgainButton,
                     );
@@ -140,7 +144,8 @@ pub fn build_game_over_menu(
                         parent,
                         asset_server,
                         "VER HISTORICO",
-                        BUTTON_STYLE,
+                        button_style(width),
+                        text_width,
                         BUTTON,
                         GameOverHistoryButton,
                     );
@@ -148,7 +153,8 @@ pub fn build_game_over_menu(
                         parent,
                         asset_server,
                         "MENU PRINCIPAL",
-                        BUTTON_STYLE,
+                        button_style(width),
+                        text_width,
                         BUTTON,
                         MainMenuButton,
                     );
@@ -162,6 +168,7 @@ fn spawn_button<M: Component>(
     asset_server: &Res<AssetServer>,
     label: &str,
     style: Style,
+    text_width: f32,
     color: Color,
     marker: M,
 ) {
@@ -175,11 +182,11 @@ fn spawn_button<M: Component>(
             marker,
         ))
         .with_children(|parent| {
-            parent.spawn(TextBundle {
-                text: Text::from_section(label, get_button_text_style(asset_server))
-                    .with_alignment(TextAlignment::Center),
-                ..default()
-            });
+            parent.spawn(theme::wrapped_text(
+                label,
+                get_button_text_style(asset_server),
+                text_width,
+            ));
         });
 }
 
@@ -193,7 +200,16 @@ pub fn despawn_game_over_menu(
 }
 
 /// The "fim de jogo" interstitial: one tap to continue, nothing to read.
-pub fn spawn_resume_screen(mut commands: Commands, asset_server: Res<AssetServer>) {
+pub fn spawn_resume_screen(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    window_query: Query<&Window>,
+) {
+    let width = window_query
+        .get_single()
+        .map(|window| theme::content_width(window.width()))
+        .unwrap_or(theme::CONTENT_MAX_WIDTH);
+
     commands
         .spawn((
             ButtonBundle {
@@ -211,20 +227,16 @@ pub fn spawn_resume_screen(mut commands: Commands, asset_server: Res<AssetServer
                     ..default()
                 })
                 .with_children(|parent| {
-                    parent.spawn(TextBundle {
-                        text: Text::from_section(
-                            "FIM DE JOGO",
-                            get_title_text_style(&asset_server),
-                        ),
-                        ..default()
-                    });
-                    parent.spawn(TextBundle {
-                        text: Text::from_section(
-                            "TOQUE PARA CONTINUAR",
-                            theme::text(&asset_server, theme::TEXT_SM, theme::MUTED),
-                        ),
-                        ..default()
-                    });
+                    parent.spawn(theme::wrapped_text(
+                        "FIM DE JOGO",
+                        get_title_text_style(&asset_server),
+                        width,
+                    ));
+                    parent.spawn(theme::wrapped_text(
+                        "TOQUE PARA CONTINUAR",
+                        theme::text(&asset_server, theme::TEXT_SM, theme::MUTED),
+                        width,
+                    ));
                 });
         });
 }

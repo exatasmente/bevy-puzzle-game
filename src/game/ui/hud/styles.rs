@@ -20,16 +20,24 @@ pub const TOP_BAR_STYLE: Style = Style {
     flex_direction: FlexDirection::Row,
     justify_content: JustifyContent::SpaceBetween,
     align_items: AlignItems::Center,
-    padding: UiRect::all(Val::Px(theme::SPACE_MD)),
+    // Narrower than the rest of the app on purpose: at 320px this row carries
+    // three stats and a 48px button, and SPACE_MD on both sides was enough to
+    // push "00:00" out of its column.
+    padding: UiRect::all(Val::Px(theme::SPACE_SM)),
     ..Style::DEFAULT
 };
 
 /// A label stacked over a value ("PONTOS" / "12").
+///
+/// The three stats share whatever the pause button leaves, evenly: fixed widths
+/// meant the widest value ("00:00") decided whether the row fit.
 pub const STAT_STYLE: Style = Style {
     flex_direction: FlexDirection::Column,
     justify_content: JustifyContent::Center,
     align_items: AlignItems::Center,
-    min_size: Size::new(Val::Px(72.0), Val::Auto),
+    flex_grow: 1.0,
+    flex_basis: Val::Px(0.0),
+    min_size: Size::new(Val::Px(56.0), Val::Auto),
     ..Style::DEFAULT
 };
 
@@ -48,7 +56,14 @@ pub const LEVEL_ROW_STYLE: Style = Style {
     flex_direction: FlexDirection::Row,
     justify_content: JustifyContent::SpaceBetween,
     align_items: AlignItems::Center,
-    margin: UiRect::all(Val::Px(theme::SPACE_XS)),
+    // Clear of the stat values above it: this font's glyphs draw well past the
+    // line box it reports, so nodes that merely abut each other collide.
+    margin: UiRect::new(
+        Val::Px(theme::SPACE_XS),
+        Val::Px(theme::SPACE_XS),
+        Val::Px(theme::SPACE_SM),
+        Val::Px(theme::SPACE_XS),
+    ),
     ..Style::DEFAULT
 };
 
@@ -71,12 +86,7 @@ pub const BACK_BUTTON_ROOT_STYLE: Style = Style {
     ..Style::DEFAULT
 };
 
-pub const BACK_BUTTON_STYLE: Style = Style {
-    size: Size::new(Val::Px(200.0), Val::Px(theme::TOUCH_TARGET)),
-    justify_content: JustifyContent::Center,
-    align_items: AlignItems::Center,
-    ..Style::DEFAULT
-};
+pub const BACK_BUTTON_WIDTH: f32 = 200.0;
 
 /// Track color for the progress bar: visible, but clearly the empty part.
 pub const PROGRESS_TRACK_COLOR: Color = Color::rgba(1.0, 1.0, 1.0, 0.18);

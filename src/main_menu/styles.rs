@@ -22,18 +22,29 @@ pub const TITLE_STYLE: Style = Style {
     ..Style::DEFAULT
 };
 
-/// One mode per card. Tall enough to hold a name, a description and the best
-/// score without crowding, and to be an easy target on a phone.
-pub const MODE_CARD_STYLE: Style = Style {
-    flex_direction: FlexDirection::Column,
-    justify_content: JustifyContent::Center,
-    align_items: AlignItems::Center,
-    size: Size::new(Val::Percent(88.0), Val::Px(92.0)),
-    max_size: Size::new(Val::Px(420.0), Val::Auto),
-    margin: UiRect::all(Val::Px(theme::SPACE_XS)),
-    padding: UiRect::all(Val::Px(theme::SPACE_SM)),
-    ..Style::DEFAULT
-};
+/// One mode per card.
+///
+/// Sized in pixels from the window rather than as a percentage: the card holds
+/// a description long enough to need fitting, and `theme::wrapped_text` fits a
+/// label to a pixel width. Height is `Auto` over a floor, so the card can grow
+/// with its contents instead of clipping them.
+pub fn mode_card_style(width: f32) -> Style {
+    Style {
+        flex_direction: FlexDirection::Column,
+        justify_content: JustifyContent::Center,
+        align_items: AlignItems::Center,
+        size: Size::new(Val::Px(width), Val::Auto),
+        min_size: Size::new(Val::Px(width), Val::Px(92.0)),
+        margin: UiRect::all(Val::Px(theme::SPACE_XS)),
+        padding: UiRect::all(Val::Px(theme::SPACE_SM)),
+        ..Style::DEFAULT
+    }
+}
+
+/// Width available to text inside a mode card.
+pub fn mode_card_text_width(width: f32) -> f32 {
+    width - theme::SPACE_SM * 2.0
+}
 
 pub fn get_title_text_style(asset_server: &Res<AssetServer>) -> TextStyle {
     theme::text(asset_server, theme::TEXT_XL, theme::ON_SURFACE)
