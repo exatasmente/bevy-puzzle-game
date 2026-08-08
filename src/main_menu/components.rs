@@ -8,3 +8,10 @@ pub struct MainMenu;
 pub struct PlayButton {
     pub game_mode: GameMode,
 }
+
+/// Resumes the run stored from a previous session.
+#[derive(Component)]
+pub struct ContinueRunButton {
+    pub game_mode: GameMode,
+    pub score: usize,
+}

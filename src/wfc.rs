@@ -615,6 +615,33 @@ mod tests {
         }
     }
 
+    /// The impostor must not be recognisable by its shape alone.
+    ///
+    /// At one broken edge, and at three, the tile set leaves exactly one
+    /// reachable answer — a three-armed piece — so the round became "find the
+    /// T" and the pattern stopped mattering. The game asks for two or four; if
+    /// a future change reintroduces the others, this fails.
+    #[test]
+    fn the_impostor_is_not_always_the_same_shape() {
+        let mut rng = rng();
+
+        for wanted in [2, 4] {
+            let mut kinds = std::collections::BTreeSet::new();
+
+            for _ in 0..150 {
+                let mosaic = generate(3, 4, wanted, &mut rng);
+                kinds.insert(format!("{:?}", mosaic.tiles[mosaic.broken].kind));
+            }
+
+            assert!(
+                kinds.len() >= 2,
+                "{} broken edges always produces {:?}",
+                wanted,
+                kinds
+            );
+        }
+    }
+
     #[test]
     fn the_requested_difficulty_is_usually_met() {
         let mut rng = rng();
@@ -662,3 +689,4 @@ mod tests {
         }
     }
 }
+

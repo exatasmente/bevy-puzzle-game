@@ -260,25 +260,31 @@ pub fn preview_seconds_for_level(level: usize) -> f32 {
 pub fn mosaic_dimensions_for_level(level: usize) -> (usize, usize) {
     match level {
         1 => (2, 3),
-        2 | 3 => (3, 3),
-        4 | 5 => (3, 4),
-        6 | 7 => (4, 4),
-        _ => (4, 5),
+        2 => (3, 3),
+        3 | 4 => (3, 4),
+        5 | 6 => (4, 4),
+        7 | 8 => (4, 5),
+        _ => (5, 5),
     }
 }
 
 /// How many of the odd piece's four edges disagree with their surroundings.
 ///
-/// Four is unmissable; two is a real search. One is only reachable against the
-/// board's outer edge — `wfc::corrupt` explains why a lone disagreement between
-/// two pieces would be unfair rather than hard — and the generator falls back
-/// to two when it cannot place one.
+/// Only four and two are used, and that is a constraint of the tile set rather
+/// than a preference. Three edges away from a piece with two arms or fewer is
+/// always a three-armed piece, and one edge away from a legal piece — against
+/// the board's outer edge, the only place a lone violation is fair — is also
+/// always a three-armed piece. So those settings made the impostor a T every
+/// single time, which is a tell the player learns in two rounds and never
+/// unlearns. Two gives all four shapes; four gives the two-armed ones.
+///
+/// The difficulty past the first level therefore rides on the size of the
+/// board, not on the number of broken edges.
 pub fn mosaic_violations_for_level(level: usize) -> usize {
-    match level {
-        1 => 4,
-        2 | 3 => 3,
-        4 | 5 | 6 => 2,
-        _ => 1,
+    if level <= 1 {
+        4
+    } else {
+        2
     }
 }
 
@@ -783,6 +789,12 @@ impl ColorPuzzle {
         self.score = 0;
     }
 
+    /// Puts the score back to where a stored run left it, so the level, the
+    /// piece count and the color distance all pick up where they were.
+    pub fn restore_score(&mut self, score: usize) {
+        self.score = score;
+    }
+
     /// Walks the round's cells: color, whether it is the answer, and the piece
     /// drawn on it (`None` outside `Mosaic`).
     pub fn for_each_cell<F>(&self, mut f: F)
@@ -946,6 +958,12 @@ impl GameHistory {
     
     pub fn get_level_history(&self, index : usize) -> &LevelHistory {
         self.levels.get(index).unwrap()
+    }
+
+    /// Restores a resumed run's score, so the summary at the end counts the
+    /// whole run and not just the part played after coming back.
+    pub fn restore(&mut self, score: usize) {
+        self.total_score = score;
     }
 
     pub fn reset(&mut self) {

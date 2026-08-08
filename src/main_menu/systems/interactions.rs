@@ -5,6 +5,7 @@ use crate::game::puzzle::components::ColorPuzzle;
 use crate::game::puzzle::components::GameHistory;
 use crate::main_menu::components::*;
 use crate::main_menu::styles::{card_border, card_border_hovered, card_border_pressed};
+use crate::game::score::resources::SavedRun;
 use crate::pagination::Pagination;
 use crate::AppState;
 
@@ -34,6 +35,53 @@ pub fn interact_with_play_button(
                 game_history.reset();
                 game_history.set_game_mode(play_button.game_mode);
                 pagination.reset();
+                transition_to_state_event_writer.send(TransitionToStateEvent {
+                    state: AppState::Game,
+                });
+            }
+            Interaction::Hovered => *background_color = card_border_hovered(accent).into(),
+            Interaction::None => *background_color = card_border(accent).into(),
+        }
+    }
+}
+
+/// Picks a stored run back up.
+///
+/// The board is not restored, only the score — which is where the level, the
+/// piece count and the color distance all come from. There is no position to
+/// come back to in a game that deals a new board every round; what the player
+/// is returning to is their place in the curve.
+pub fn interact_with_continue_run_button(
+    mut button_query: Query<
+        (&Interaction, &mut BackgroundColor, &ContinueRunButton),
+        (Changed<Interaction>, With<ContinueRunButton>),
+    >,
+    mut transition_to_state_event_writer: EventWriter<TransitionToStateEvent>,
+    mut puzzle: ResMut<ColorPuzzle>,
+    mut game_history: ResMut<GameHistory>,
+    mut pagination: ResMut<Pagination>,
+    mut saved_run: ResMut<SavedRun>,
+) {
+    for (interaction, mut background_color, button) in button_query.iter_mut() {
+        let accent = button.game_mode.accent();
+
+        match *interaction {
+            Interaction::Clicked => {
+                *background_color = card_border_pressed(accent).into();
+
+                puzzle.setup(&button.game_mode);
+                puzzle.restore_score(button.score);
+
+                game_history.reset();
+                game_history.set_game_mode(button.game_mode);
+                game_history.restore(button.score);
+                pagination.reset();
+
+                // Keep the stored run pointing at the same place until the
+                // resumed run moves it. Dropping it here would lose the run if
+                // the player bounced straight back to the menu.
+                saved_run.store(button.game_mode, button.score);
+
                 transition_to_state_event_writer.send(TransitionToStateEvent {
                     state: AppState::Game,
                 });
