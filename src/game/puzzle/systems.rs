@@ -6,6 +6,7 @@ use crate::feedback::BannerEvent;
 use crate::theme;
 use super::components::*;
 use crate::systems::BackgroundTranstion;
+use crate::wfc::Tile;
 
 #[derive(Component)]
 pub struct LastClick;
@@ -152,6 +153,75 @@ pub fn player_interaction(
 
 }
 
+/// Draws a mosaic piece as children of its cell.
+///
+/// One node per arm plus a hub at the centre, all in the round's color. Kept as
+/// children so the cell entity stays exactly what the rest of the game expects:
+/// one `PuzzleColor` per cell, positioned at its bottom-left corner, which is
+/// what the hit test and the answer reveal are written against.
+fn spawn_tile_arms(parent: &mut ChildBuilder, tile: Tile, size: f32, color: Color) {
+    let edges = tile.edges();
+
+    // A piece with no arms is a blank plate. Drawing its hub anyway would put a
+    // mark on every empty cell, which reads as a piece and gives the player a
+    // pattern that is not there.
+    if !edges.iter().any(|edge| *edge) {
+        return;
+    }
+
+    let arm_width = size * 0.32;
+    let centre = size / 2.0;
+    let half_arm = arm_width / 2.0;
+
+    // The hub joins the arms, so a corner reads as one bent pipe rather than
+    // two rectangles that happen to meet.
+    let hub = shapes::Rectangle {
+        extents: Vec2::new(arm_width, arm_width),
+        origin: shapes::RectangleOrigin::Center,
+    };
+
+    parent.spawn((
+        ShapeBundle {
+            path: GeometryBuilder::build_as(&hub),
+            transform: Transform::from_xyz(centre, centre, 0.01),
+            ..default()
+        },
+        Fill::color(color),
+    ));
+
+    // Each arm runs from inside the hub out to the edge it points at, so the
+    // two overlap and the joint has no seam. `wfc` indexes edges clockwise from
+    // the top, and the board's y axis grows upward.
+    let reach = centre + half_arm;
+    let offset = (centre - half_arm) / 2.0;
+    let arms = [
+        (Vec2::new(arm_width, reach), Vec2::new(centre, centre + offset)),
+        (Vec2::new(reach, arm_width), Vec2::new(centre + offset, centre)),
+        (Vec2::new(arm_width, reach), Vec2::new(centre, centre - offset)),
+        (Vec2::new(reach, arm_width), Vec2::new(centre - offset, centre)),
+    ];
+
+    for (edge, (extents, position)) in edges.iter().zip(arms) {
+        if !edge {
+            continue;
+        }
+
+        let arm = shapes::Rectangle {
+            extents,
+            origin: shapes::RectangleOrigin::Center,
+        };
+
+        parent.spawn((
+            ShapeBundle {
+                path: GeometryBuilder::build_as(&arm),
+                transform: Transform::from_xyz(position.x, position.y, 0.01),
+                ..default()
+            },
+            Fill::color(color),
+        ));
+    }
+}
+
 /// Blanks a `Memory` board when its preview runs out.
 ///
 /// Repainting `Fill` leaves the entities — and so the hit test and the answer
@@ -235,6 +305,12 @@ pub fn render_game_history(
             origin: shapes::RectangleOrigin::BottomLeft,
         };
 
+        let plate = if color.tile.is_some() {
+            Fill::color(theme::SURFACE)
+        } else {
+            fill
+        };
+
         commands
             .spawn((
                 ShapeBundle {
@@ -246,10 +322,14 @@ pub fn render_game_history(
                     ),
                     ..default()
                 },
-                fill,
-                PuzzleColor { index, is_correct_color:  color.is_correct_color, x : color.x , y:  color.y, color: color.color.clone(), size },
-            )
-        );
+                plate,
+                PuzzleColor { index, is_correct_color:  color.is_correct_color, x : color.x , y:  color.y, color: color.color.clone(), size, tile: color.tile },
+            ))
+            .with_children(|parent| {
+                if let Some(tile) = color.tile {
+                    spawn_tile_arms(parent, tile, size, color.color);
+                }
+            });
 
         if is_correct_color {
             let inner_shape =  shapes::Rectangle {
@@ -400,12 +480,13 @@ pub fn spawn_objects(
         return;
     }
 
+    // Recursive: a mosaic cell owns the nodes its piece is drawn from.
     for entity in object_query.iter_mut() {
-        commands.entity(entity).despawn();
+        commands.entity(entity).despawn_recursive();
     }
 
     for entity in last_click_query.iter_mut() {
-        commands.entity(entity).despawn();
+        commands.entity(entity).despawn_recursive();
     }
 
     let previous_background = puzzle.background_color();
@@ -428,14 +509,14 @@ pub fn spawn_objects(
         memory_phase.clear();
     }
 
-    // Collect first: laying the board out needs the square count, and writing
-    // the resulting cell size back to the puzzle needs the borrow released.
-    let mut colors = Vec::new();
-    puzzle.for_each_color(|index, color, is_correct_color| {
-        colors.push((index, color, is_correct_color));
+    // Collect first: laying the board out needs the cell count, and writing the
+    // resulting cell size back to the puzzle needs the borrow released.
+    let mut cells = Vec::new();
+    puzzle.for_each_cell(|index, color, is_correct_color, tile| {
+        cells.push((index, color, is_correct_color, tile));
     });
 
-    let grid = puzzle.grid_for_count(colors.len());
+    let grid = puzzle.round_grid();
 
     // Everything downstream — the answer reveal, the replay, the hit test —
     // measures squares by this.
@@ -447,26 +528,38 @@ pub fn spawn_objects(
     };
 
     let mut z = 0.0;
-    for (index, color, is_correct_color) in colors {
+    for (index, color, is_correct_color, tile) in cells {
         let position = grid.cell_position(index);
 
-        commands.spawn((
-            ShapeBundle {
-                path: GeometryBuilder::build_as(&shape),
-                transform: Transform::from_xyz(position.x, position.y, z),
-                ..default()
-            },
-            Fill::color(color),
-            PuzzleColor {
-                index,
-                is_correct_color,
-                x: position.x,
-                y: position.y,
-                color,
-                size: grid.cell_size,
-            },
-            PuzzleColorGame {},
-        ));
+        // In a mosaic the cell is a plate the piece is drawn on, so every plate
+        // is the same neutral color; in the color modes the cell *is* the
+        // color.
+        let plate = if tile.is_some() { theme::SURFACE } else { color };
+
+        commands
+            .spawn((
+                ShapeBundle {
+                    path: GeometryBuilder::build_as(&shape),
+                    transform: Transform::from_xyz(position.x, position.y, z),
+                    ..default()
+                },
+                Fill::color(plate),
+                PuzzleColor {
+                    index,
+                    is_correct_color,
+                    x: position.x,
+                    y: position.y,
+                    color,
+                    size: grid.cell_size,
+                    tile,
+                },
+                PuzzleColorGame {},
+            ))
+            .with_children(|parent| {
+                if let Some(tile) = tile {
+                    spawn_tile_arms(parent, tile, grid.cell_size, color);
+                }
+            });
 
         z += 0.1;
     }
@@ -567,7 +660,7 @@ pub fn despaw_objects(
     memory_phase.clear();
 
     for entity in object_query.iter_mut() {
-        commands.entity(entity).despawn();
+        commands.entity(entity).despawn_recursive();
     }
 
     puzzle.generate_colors();

@@ -54,6 +54,7 @@ pub const DANGER: Color = Color::rgb(0.882, 0.114, 0.282);
 pub const ACCENT: Color = Color::rgb(0.961, 0.647, 0.141);
 pub const LIME: Color = Color::rgb(0.639, 0.776, 0.078);
 pub const INFO: Color = Color::rgb(0.231, 0.510, 0.965);
+pub const PINK: Color = Color::rgb(0.925, 0.282, 0.600);
 
 // --- Buttons ---------------------------------------------------------------
 

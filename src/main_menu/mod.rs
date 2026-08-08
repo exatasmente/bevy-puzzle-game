@@ -18,9 +18,13 @@ impl Plugin for MainMenuPlugin {
             .add_system(spawn_main_menu.in_schedule(OnEnter(AppState::MainMenu)))
             .add_system(reset_background.in_schedule(OnEnter(AppState::MainMenu)))
             // Systems
-            .add_systems(
-                (interact_with_play_button, relayout_main_menu)
-                    .in_set(OnUpdate(AppState::MainMenu)),
+            .add_system(interact_with_play_button.in_set(OnUpdate(AppState::MainMenu)))
+            // Rebuilding tears down live `Button` entities, so it runs after
+            // `Update` — see the note on `relayout_main_menu`.
+            .add_system(
+                relayout_main_menu
+                    .in_base_set(CoreSet::PostUpdate)
+                    .run_if(in_state(AppState::MainMenu)),
             )
             // OnExit State Systems
             .add_system(despawn_main_menu.in_schedule(OnExit(AppState::MainMenu)));

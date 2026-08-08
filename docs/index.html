@@ -2,24 +2,23 @@
   <head>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <meta charset="UTF-8" />
+    <title>Color Puzzle</title>
+    <!-- Inline, so the page stops asking for a /favicon.ico that is not there. -->
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230e0c16'/%3E%3Crect x='4' y='4' width='11' height='11' fill='%23a855f7'/%3E%3Crect x='17' y='4' width='11' height='11' fill='%234ade80'/%3E%3Crect x='4' y='17' width='11' height='11' fill='%23a3c614'/%3E%3Crect x='17' y='17' width='11' height='11' fill='%23ec4899'/%3E%3C/svg%3E"
+    />
     <style>
+      /* The page ground matches the game's own, so the canvas does not sit on
+         a contrasting page while it loads. */
       body {
-        background: linear-gradient(
-          135deg,
-          white 0%,
-          white 49%,
-          black 49%,
-          black 51%,
-          white 51%,
-          white 100%
-        );
-        background-repeat: repeat;
-        background-size: 20px 20px;
+        background: #0e0c16;
         padding: 0;
         margin: 0;
       }
       canvas {
-        background-color: rgb(51, 51, 51);
+        background-color: #0e0c16;
+        display: block;
       }
     </style>
   </head>
