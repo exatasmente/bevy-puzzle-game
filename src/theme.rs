@@ -10,34 +10,65 @@
 use bevy::prelude::*;
 
 // --- Palette ---------------------------------------------------------------
+//
+// Neon on near-black, from the mock-up: a very dark violet ground, panels one
+// step above it, and saturated accents used sparingly enough that they still
+// read as neon rather than as noise.
 
-/// Scrim behind full-screen menus. Semi transparent so the puzzle color, which
-/// is the game's whole identity, still reads through it.
-pub const SCRIM: Color = Color::rgba(0.04, 0.04, 0.06, 0.72);
-/// Panels sitting on top of the scrim.
-pub const SURFACE: Color = Color::rgba(0.10, 0.10, 0.13, 0.92);
-pub const ON_SURFACE: Color = Color::rgb(0.97, 0.97, 0.98);
+/// The ground the whole game sits on. Also the board background during a round
+/// — see `ColorPuzzle::background_color`, which tints it slightly toward the
+/// round's own hue.
+pub const BACKGROUND: Color = Color::rgb(0.055, 0.047, 0.086);
+
+/// Scrim behind full-screen menus. Nearly opaque: the board behind it is a
+/// puzzle in progress, and a legible menu matters more than a glimpse of it.
+pub const SCRIM: Color = Color::rgba(0.043, 0.035, 0.071, 0.94);
+
+/// Panels sitting on the scrim.
+pub const SURFACE: Color = Color::rgb(0.098, 0.090, 0.145);
+/// One step above `SURFACE`: rows, tiles and secondary buttons on a panel.
+pub const SURFACE_RAISED: Color = Color::rgb(0.129, 0.118, 0.188);
+/// A square with its color hidden, in `Memory`. Light enough to read as a
+/// face-down card against the board background — the player still has to be
+/// able to see what they are aiming at.
+pub const SURFACE_HIDDEN: Color = Color::rgb(0.243, 0.231, 0.318);
+
+/// Hairline that gives a panel its edge. Bevy 0.10 UI has no border color, so
+/// this is used as the background of a wrapper node with a couple of pixels of
+/// padding — the inner node paints over all but the edge.
+pub const OUTLINE: Color = Color::rgb(0.184, 0.169, 0.271);
+
+pub const ON_SURFACE: Color = Color::rgb(0.93, 0.93, 0.96);
 /// Secondary text: present but demoted.
-pub const MUTED: Color = Color::rgb(0.64, 0.65, 0.72);
+pub const MUTED: Color = Color::rgb(0.54, 0.53, 0.63);
 
+/// The brand color, and the color of the one action a screen wants taken.
+pub const PRIMARY: Color = Color::rgb(0.659, 0.333, 0.969);
 /// Reward green. Reserved for gains — correct picks, records, streaks.
-pub const SUCCESS: Color = Color::rgb(0.22, 0.80, 0.44);
-/// Loss red. Reserved for misses and time running out.
-pub const DANGER: Color = Color::rgb(0.94, 0.28, 0.32);
+pub const SUCCESS: Color = Color::rgb(0.290, 0.871, 0.502);
+/// Loss red. Reserved for misses, for time running out, and for the one
+/// button that ends a run.
+pub const DANGER: Color = Color::rgb(0.882, 0.114, 0.282);
 /// Celebration gold. Reserved for the rarest moments (records, level ups) so
 /// it keeps its meaning.
-pub const ACCENT: Color = Color::rgb(1.00, 0.78, 0.24);
+pub const ACCENT: Color = Color::rgb(0.961, 0.647, 0.141);
+pub const LIME: Color = Color::rgb(0.639, 0.776, 0.078);
+pub const INFO: Color = Color::rgb(0.231, 0.510, 0.965);
 
 // --- Buttons ---------------------------------------------------------------
 
-pub const BUTTON: Color = Color::rgb(0.17, 0.17, 0.21);
-pub const BUTTON_HOVERED: Color = Color::rgb(0.25, 0.25, 0.30);
-pub const BUTTON_PRESSED: Color = Color::rgb(0.34, 0.34, 0.40);
+pub const BUTTON: Color = SURFACE_RAISED;
+pub const BUTTON_HOVERED: Color = Color::rgb(0.176, 0.161, 0.259);
+pub const BUTTON_PRESSED: Color = Color::rgb(0.224, 0.204, 0.325);
 
-/// The one action we want taken on a screen (currently "jogar novamente").
-pub const BUTTON_PRIMARY: Color = Color::rgb(0.16, 0.55, 0.33);
-pub const BUTTON_PRIMARY_HOVERED: Color = Color::rgb(0.20, 0.66, 0.40);
-pub const BUTTON_PRIMARY_PRESSED: Color = Color::rgb(0.26, 0.78, 0.48);
+pub const BUTTON_PRIMARY: Color = PRIMARY;
+pub const BUTTON_PRIMARY_HOVERED: Color = Color::rgb(0.729, 0.443, 0.980);
+pub const BUTTON_PRIMARY_PRESSED: Color = Color::rgb(0.796, 0.553, 0.988);
+
+/// Destructive action: ending the run.
+pub const BUTTON_DANGER: Color = DANGER;
+pub const BUTTON_DANGER_HOVERED: Color = Color::rgb(0.925, 0.220, 0.373);
+pub const BUTTON_DANGER_PRESSED: Color = Color::rgb(0.949, 0.353, 0.478);
 
 // --- Spacing ---------------------------------------------------------------
 
@@ -91,7 +122,11 @@ pub fn text_width(value: &str, size: f32) -> f32 {
 }
 
 /// Smallest type we will shrink a label to before letting it wrap.
-const MIN_FIT_SIZE: f32 = 10.0;
+///
+/// Wrapping is the bad outcome (the lines overlap), so the floor is set low
+/// enough that no label in the game reaches it. If a new string does, shorten
+/// the string rather than lowering this further.
+const MIN_FIT_SIZE: f32 = 9.0;
 
 /// A centered text node sized to fit `max_width` on a single line.
 ///
@@ -126,6 +161,91 @@ pub fn wrapped_text(value: impl Into<String>, style: TextStyle, max_width: f32) 
             ..Style::DEFAULT
         },
         ..default()
+    }
+}
+
+/// Multi-colored text on one line, fitted the same way [`wrapped_text`] is.
+///
+/// Used for the wordmark, where each letter carries its own color. Fitting is
+/// done on the whole string so the sections keep a common size.
+pub fn wrapped_sections(
+    parts: Vec<(String, Color)>,
+    font: Handle<Font>,
+    base_size: f32,
+    max_width: f32,
+) -> TextBundle {
+    let max_width = max_width.max(1.0);
+    let total: String = parts.iter().map(|(value, _)| value.as_str()).collect();
+
+    let mut size = base_size;
+    let width = text_width(&total, size);
+    if width > max_width {
+        size = (size * max_width / width).max(MIN_FIT_SIZE);
+    }
+
+    let sections: Vec<TextSection> = parts
+        .into_iter()
+        .map(|(value, color)| TextSection {
+            value,
+            style: TextStyle {
+                font: font.clone(),
+                font_size: size,
+                color,
+            },
+        })
+        .collect();
+
+    TextBundle {
+        text: Text::from_sections(sections).with_alignment(TextAlignment::Center),
+        style: Style {
+            max_size: Size::new(Val::Px(max_width), Val::Auto),
+            margin: UiRect::vertical(Val::Px((size * 0.3).ceil())),
+            ..Style::DEFAULT
+        },
+        ..default()
+    }
+}
+
+/// Thickness of the faked borders described on [`OUTLINE`].
+pub const HAIRLINE: f32 = 2.0;
+
+/// Wrapper that draws a `HAIRLINE` border around whatever it contains.
+///
+/// Bevy 0.10's UI cannot stroke a node, so the border is a parent painted in
+/// the border color with just enough padding to show around the child.
+pub fn outlined_style(width: f32) -> Style {
+    Style {
+        // Taffy sizes the content box, so the border's own padding is added
+        // outside `width`. Take it off here, or every outlined card ends up
+        // `HAIRLINE * 2` wider than the column it is supposed to sit in.
+        size: Size::new(Val::Px((width - HAIRLINE * 2.0).max(1.0)), Val::Auto),
+        flex_direction: FlexDirection::Column,
+        padding: UiRect::all(Val::Px(HAIRLINE)),
+        margin: UiRect::vertical(Val::Px(SPACE_XS)),
+        ..Style::DEFAULT
+    }
+}
+
+/// The panel that sits inside an [`outlined_style`] wrapper.
+pub fn outlined_inner_style() -> Style {
+    Style {
+        size: Size::new(Val::Percent(100.0), Val::Auto),
+        flex_direction: FlexDirection::Row,
+        align_items: AlignItems::Center,
+        padding: UiRect::all(Val::Px(SPACE_SM)),
+        ..Style::DEFAULT
+    }
+}
+
+/// A solid color chip: the mode marker on a menu card, the target color on a
+/// history row.
+pub fn tile_style(size: f32) -> Style {
+    Style {
+        size: Size::new(Val::Px(size), Val::Px(size)),
+        // Flex would otherwise shrink a chip to nothing to make room for a long
+        // label, and the chip is the point of the row.
+        min_size: Size::new(Val::Px(size), Val::Px(size)),
+        ..Style::DEFAULT
     }
 }
 

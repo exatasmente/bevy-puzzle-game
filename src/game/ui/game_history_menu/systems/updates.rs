@@ -14,6 +14,19 @@ use crate::game::ui::game_history_menu::SpawnPaginationEvent;
 use crate::pagination::Pagination;
 use crate::theme;
 
+/// Rebuilds the round list when the window changes size.
+///
+/// The list is already built from an event, so a relayout is just that event
+/// again — no second code path to keep in step with the first.
+pub fn relayout_game_history_menu(
+    mut relayout_events: EventReader<crate::layout::RelayoutEvent>,
+    mut spawn_pagination_event_writer: EventWriter<SpawnPaginationEvent>,
+) {
+    if relayout_events.iter().next().is_some() {
+        spawn_pagination_event_writer.send(SpawnPaginationEvent);
+    }
+}
+
 pub fn spawn_pagination_itens(
     mut commands: Commands,
     game_history: Res<GameHistory>,
@@ -70,7 +83,7 @@ pub fn spawn_pagination_itens(
                     .with_children(|parent| {
                         // The color the round was asking for.
                         parent.spawn(NodeBundle {
-                            style: SWATCH_STYLE,
+                            style: theme::tile_style(SWATCH_SIZE),
                             background_color: level.get_correct_color().into(),
                             ..default()
                         });
@@ -114,7 +127,7 @@ fn build_actions(asset_server: &Res<AssetServer>, parent: &mut ChildBuilder, wid
         .spawn((
             ButtonBundle {
                 style: button_style(width),
-                background_color: BUTTON.into(),
+                background_color: theme::BUTTON_PRIMARY.into(),
                 ..default()
             },
             ContinueButton,
@@ -134,7 +147,9 @@ fn build_actions(asset_server: &Res<AssetServer>, parent: &mut ChildBuilder, wid
         .spawn((
             ButtonBundle {
                 style: button_style(width),
-                background_color: BUTTON.into(),
+                // The one destructive action on the screen, and the only red
+                // button in the game.
+                background_color: theme::BUTTON_DANGER.into(),
                 ..default()
             },
             EndRunButton,

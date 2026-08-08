@@ -22,10 +22,15 @@ pub const GAME_OVER_MENU_CONTAINER_STYLE: Style = Style {
     justify_content: JustifyContent::Center,
     align_items: AlignItems::Center,
     size: Size::new(Val::Percent(100.0), Val::Percent(100.0)),
-    // The summary is a tall stack — score, record, stats, three buttons — and
-    // SPACE_LG on every side was enough to push the last button off a short
-    // screen.
-    padding: UiRect::all(Val::Px(theme::SPACE_MD)),
+    // Vertical only, and SPACE_MD rather than SPACE_LG: the summary is a tall
+    // stack — score, record, stats, three buttons — and the larger padding was
+    // enough to push the last button off a short screen.
+    padding: UiRect {
+        left: Val::Px(0.0),
+        right: Val::Px(0.0),
+        top: Val::Px(theme::SPACE_MD),
+        bottom: Val::Px(theme::SPACE_MD),
+    },
     gap: Size::new(Val::Px(theme::SPACE_SM), Val::Px(theme::SPACE_SM)),
     ..Style::DEFAULT
 };

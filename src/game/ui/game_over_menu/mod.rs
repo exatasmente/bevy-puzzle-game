@@ -27,6 +27,7 @@ impl Plugin for GameOverMenuPlugin {
                     interact_with_play_again_button,
                     interact_with_history_button,
                     interact_with_main_menu_button,
+                    relayout_game_over_menu,
                 )
                     .in_set(OnUpdate(AppState::GameOverResume)),
             )

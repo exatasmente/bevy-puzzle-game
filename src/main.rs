@@ -24,6 +24,8 @@ use feedback::*;
 mod interaction_animation;
 use interaction_animation::*;
 
+mod layout;
+mod oklab;
 mod storage;
 mod theme;
 
@@ -35,6 +37,8 @@ fn main() {
         .add_state::<AppState>()
         .add_event::<TransitionToStateEvent>()
         .add_event::<InteractionAnimationEvent>()
+        .add_event::<layout::RelayoutEvent>()
+        .init_resource::<layout::LayoutWidth>()
         .insert_resource(ClearColor(Color::rgb(0.0, 0.0, 0.0)))
         // My Plugins
         .add_plugin(MainMenuPlugin)
@@ -50,6 +54,7 @@ fn main() {
         .add_system(transition_to_main_menu_state)
         .add_system(transition_to_game_over_state)
         .add_system(exit_game)
+        .add_system(layout::track_window_width)
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 present_mode : PresentMode::AutoNoVsync,

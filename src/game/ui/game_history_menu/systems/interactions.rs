@@ -9,6 +9,7 @@ use crate::game::ui::game_history_menu::components::*;
 use crate::game::ui::game_history_menu::styles::*;
 use crate::game::ui::game_history_menu::SpawnPaginationEvent;
 use crate::pagination::Pagination;
+use crate::theme;
 use crate::AppState;
 
 pub fn interact_with_level_history_option(
@@ -69,7 +70,7 @@ pub fn interact_with_continue_button(
     for (interaction, mut color) in button_query.iter_mut() {
         match *interaction {
             Interaction::Clicked => {
-                *color = BUTTON_PRESSED.into();
+                *color = theme::BUTTON_PRIMARY_PRESSED.into();
 
                 // An Infinite run has no clock to expire, so it always resumes.
                 // Testing the timer alone used to send it to the game-over
@@ -84,8 +85,8 @@ pub fn interact_with_continue_button(
                     },
                 });
             }
-            Interaction::Hovered => *color = BUTTON_HOVERED.into(),
-            Interaction::None => *color = BUTTON.into(),
+            Interaction::Hovered => *color = theme::BUTTON_PRIMARY_HOVERED.into(),
+            Interaction::None => *color = theme::BUTTON_PRIMARY.into(),
         }
     }
 }
@@ -104,7 +105,7 @@ pub fn interact_with_end_run_button(
     for (interaction, mut color) in button_query.iter_mut() {
         match *interaction {
             Interaction::Clicked => {
-                *color = BUTTON_PRESSED.into();
+                *color = theme::BUTTON_DANGER_PRESSED.into();
 
                 // Record what the summary needs, the same way the timer-expiry
                 // path does.
@@ -115,8 +116,8 @@ pub fn interact_with_end_run_button(
                     state: AppState::GameOverResume,
                 });
             }
-            Interaction::Hovered => *color = BUTTON_HOVERED.into(),
-            Interaction::None => *color = BUTTON.into(),
+            Interaction::Hovered => *color = theme::BUTTON_DANGER_HOVERED.into(),
+            Interaction::None => *color = theme::BUTTON_DANGER.into(),
         }
     }
 }

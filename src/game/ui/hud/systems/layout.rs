@@ -27,73 +27,118 @@ pub fn build_hud(commands: &mut Commands, asset_server: &Res<AssetServer>) -> En
         .with_children(|parent| {
             parent
                 .spawn(NodeBundle {
-                    style: TOP_BAR_STYLE,
+                    style: HUD_PANEL_STYLE,
+                    background_color: HUD_PANEL_COLOR.into(),
                     ..default()
                 })
                 .with_children(|parent| {
-                    spawn_stat::<ScoreValueText>(parent, asset_server, "PONTOS", "0", theme::ON_SURFACE);
-                    // "SEQ", not "SEQUENCIA": at 320px the top bar holds three
-                    // stats and a 48px button, and the longer word overflows.
-                    spawn_stat::<StreakValueText>(parent, asset_server, "SEQ", "x0", theme::MUTED);
-                    spawn_stat::<TimerValueText>(parent, asset_server, "TEMPO", "--", theme::ON_SURFACE);
-
-                    // Pause. Previously an unpositioned, unsized transparent
-                    // button; now a real, thumb-sized target.
                     parent
-                        .spawn((
-                            ButtonBundle {
-                                style: ICON_BUTTON_STYLE,
-                                background_color: BUTTON.into(),
-                                ..default()
-                            },
-                            HistoryButtom,
-                        ))
+                        .spawn(NodeBundle {
+                            style: TOP_BAR_STYLE,
+                            ..default()
+                        })
                         .with_children(|parent| {
-                            parent.spawn(theme::wrapped_text(
-                                "||",
-                                theme::text_button(asset_server),
-                                theme::TOUCH_TARGET,
+                            // Each stat gets its own color, so the eye can find
+                            // the one it wants without reading the labels.
+                            spawn_stat::<ScoreValueText>(
+                                parent,
+                                asset_server,
+                                "PONTOS",
+                                "0",
+                                theme::PRIMARY,
+                            );
+                            spawn_divider(parent);
+                            // "SEQ", not "SEQUENCIA": at 320px the top bar holds
+                            // three stats and a 48px button, and the longer word
+                            // squeezes the others out.
+                            spawn_stat::<StreakValueText>(
+                                parent,
+                                asset_server,
+                                "SEQ",
+                                "x0",
+                                theme::MUTED,
+                            );
+                            spawn_divider(parent);
+                            spawn_stat::<TimerValueText>(
+                                parent,
+                                asset_server,
+                                "TEMPO",
+                                "--",
+                                theme::INFO,
+                            );
+
+                            // Pause. Previously an unpositioned, unsized
+                            // transparent button; now a real, thumb-sized
+                            // target.
+                            parent
+                                .spawn((
+                                    ButtonBundle {
+                                        style: ICON_BUTTON_STYLE,
+                                        background_color: BUTTON.into(),
+                                        ..default()
+                                    },
+                                    HistoryButtom,
+                                ))
+                                .with_children(|parent| {
+                                    parent.spawn(theme::wrapped_text(
+                                        "||",
+                                        theme::text(
+                                            asset_server,
+                                            theme::TEXT_SM,
+                                            theme::PRIMARY,
+                                        ),
+                                        theme::TOUCH_TARGET,
+                                    ));
+                                });
+                        });
+
+                    // Level row: the current level and how close the next one is.
+                    parent
+                        .spawn(NodeBundle {
+                            style: LEVEL_ROW_STYLE,
+                            ..default()
+                        })
+                        .with_children(|parent| {
+                            parent.spawn((
+                                theme::wrapped_text(
+                                    "NIVEL 1",
+                                    theme::text_label(asset_server),
+                                    theme::CONTENT_MAX_WIDTH,
+                                ),
+                                LevelValueText,
+                            ));
+                        });
+
+                    // Goal gradient made visible: a bar that is visibly close to
+                    // full pulls harder than an unmarked distance.
+                    parent
+                        .spawn(NodeBundle {
+                            style: PROGRESS_TRACK_STYLE,
+                            background_color: PROGRESS_TRACK_COLOR.into(),
+                            ..default()
+                        })
+                        .with_children(|parent| {
+                            parent.spawn((
+                                NodeBundle {
+                                    style: PROGRESS_FILL_STYLE,
+                                    background_color: theme::PRIMARY.into(),
+                                    ..default()
+                                },
+                                LevelProgressFill,
                             ));
                         });
                 });
-
-            // Level row: the current level and how close the next one is.
-            parent
-                .spawn(NodeBundle {
-                    style: LEVEL_ROW_STYLE,
-                    ..default()
-                })
-                .with_children(|parent| {
-                    parent.spawn((
-                        theme::wrapped_text(
-                            "NIVEL 1",
-                            theme::text_label(asset_server),
-                            theme::CONTENT_MAX_WIDTH,
-                        ),
-                        LevelValueText,
-                    ));
-                });
-
-            // Goal gradient made visible: a bar that is visibly close to full
-            // pulls harder than an unmarked distance.
-            parent
-                .spawn(NodeBundle {
-                    style: PROGRESS_TRACK_STYLE,
-                    background_color: PROGRESS_TRACK_COLOR.into(),
-                    ..default()
-                })
-                .with_children(|parent| {
-                    parent.spawn((
-                        NodeBundle {
-                            style: PROGRESS_FILL_STYLE,
-                            background_color: theme::ACCENT.into(),
-                            ..default()
-                        },
-                        LevelProgressFill,
-                    ));
-                });
         })
         .id()
+}
+
+/// A hairline between two stats.
+fn spawn_divider(parent: &mut ChildBuilder) {
+    parent.spawn(NodeBundle {
+        style: STAT_DIVIDER_STYLE,
+        background_color: theme::OUTLINE.into(),
+        ..default()
+    });
 }
 
 /// Widest a stat's label or value may be before it wraps. Stats flex, so this

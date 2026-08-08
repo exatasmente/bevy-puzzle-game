@@ -2,6 +2,9 @@ use bevy::prelude::*;
 use bevy_utils::Duration;
 use rand::prelude::*;
 
+use crate::oklab::{self, Oklab};
+use crate::theme;
+
 #[derive(Component)]
 pub struct PuzzleColor {
     pub index : usize,
@@ -45,11 +48,20 @@ pub enum GameMode {
     Infinite,
     AgainstTheClock,
     TimeTrial,
+    /// The board is shown, then goes blank, and the pick is made from memory.
+    Memory,
 }
 
 impl GameMode {
     pub fn iter() -> impl Iterator<Item = GameMode> {
-        [GameMode::Infinite, GameMode::AgainstTheClock, GameMode::TimeTrial].iter().copied()
+        [
+            GameMode::Infinite,
+            GameMode::AgainstTheClock,
+            GameMode::TimeTrial,
+            GameMode::Memory,
+        ]
+        .iter()
+        .copied()
     }
 
     pub fn as_str(&self) -> &'static str {
@@ -57,16 +69,31 @@ impl GameMode {
             GameMode::Infinite => "Infinito",
             GameMode::AgainstTheClock => "Contra o Tempo",
             GameMode::TimeTrial => "Soma de Tempo",
+            GameMode::Memory => "Memoria",
         }
     }
 
     /// One line telling the player what they are choosing, so the mode select
-    /// is an informed choice rather than three unlabelled doors.
+    /// is an informed choice rather than four unlabelled doors.
     pub fn description(&self) -> &'static str {
         match self {
-            GameMode::Infinite => "Sem tempo. Jogue no seu ritmo.",
-            GameMode::AgainstTheClock => "60 segundos. Marque o maximo que puder.",
-            GameMode::TimeTrial => "30 segundos. Cada acerto soma 3s.",
+            // Kept short on purpose: the card gives a description about 25
+            // characters of room before the type has to shrink past reading
+            // size. Say the one thing that distinguishes the mode.
+            GameMode::Infinite => "Sem tempo. No seu ritmo.",
+            GameMode::AgainstTheClock => "60 segundos no relogio.",
+            GameMode::TimeTrial => "30s. Cada acerto soma 3s.",
+            GameMode::Memory => "As cores somem. Lembre.",
+        }
+    }
+
+    /// The mode's identity color, used for its marker on the menu.
+    pub fn accent(&self) -> Color {
+        match self {
+            GameMode::Infinite => theme::PRIMARY,
+            GameMode::AgainstTheClock => theme::SUCCESS,
+            GameMode::TimeTrial => theme::LIME,
+            GameMode::Memory => theme::INFO,
         }
     }
 
@@ -77,12 +104,18 @@ impl GameMode {
             GameMode::Infinite => "infinite",
             GameMode::AgainstTheClock => "against_the_clock",
             GameMode::TimeTrial => "time_trial",
+            GameMode::Memory => "memory",
         }
     }
 
     /// Whether a run in this mode can ever end on its own.
     pub fn is_timed(&self) -> bool {
-        !matches!(self, GameMode::Infinite)
+        !matches!(self, GameMode::Infinite | GameMode::Memory)
+    }
+
+    /// Whether the board blanks out before the pick.
+    pub fn hides_colors(&self) -> bool {
+        matches!(self, GameMode::Memory)
     }
 }
 
@@ -91,6 +124,8 @@ impl GameMode {
 pub struct ColorPuzzle {
     score: usize,
     current_colors: Vec<Color>,
+    /// The color all but one square share this round.
+    base_color: Color,
     correct_color_index: usize,
     pub game_mode: GameMode,
     pub seconds_added_per_success: f32,
@@ -107,14 +142,6 @@ impl Default for ColorPuzzle {
     fn default() -> Self {
         Self::new()
     }
-}
-
-/// Whether two colors are the same square on screen.
-///
-/// The puzzle identifies the target by color rather than by entity, so this is
-/// the definition of "you picked the right one".
-pub fn colors_match(a: Color, b: Color) -> bool {
-    a.r() == b.r() && a.g() == b.g() && a.b() == b.b() && a.a() == b.a()
 }
 
 /// Celebration text for a streak length, if that length deserves one.
@@ -162,16 +189,24 @@ pub fn max_level() -> usize {
     LEVEL_START_SCORES.len()
 }
 
-/// How far apart the distractor colors sit from the target, by level.
+/// Perceptual distance between the odd square and the rest, by level.
 ///
-/// This is the main difficulty dial. Previously difficulty came only from
-/// putting *more* squares on screen while the color distance stayed fixed,
-/// which made early jumps feel abrupt and late rounds merely crowded. Narrowing
-/// the distance instead keeps the challenge tracking the player's improving
-/// discrimination — the flow channel — rather than their patience.
-pub fn color_variation_for_level(level: usize) -> f32 {
+/// This is the difficulty dial, in Oklab units: about 0.02 is subtle, 0.01 is
+/// hard, and below 0.005 is a coin flip. Because the unit is perceptual, a
+/// level means the same thing whether the round came out olive or navy — which
+/// was not true of the old per-channel sRGB variation.
+pub fn color_delta_for_level(level: usize) -> f32 {
     let steps = (level.saturating_sub(1)) as f32;
-    (0.16 - steps * 0.015).max(0.05)
+    (0.080 - steps * 0.0075).max(0.018)
+}
+
+/// How long the board stays visible in `Memory` before it blanks, by level.
+///
+/// Shrinks with the level so the mode gets harder in the dimension it is about
+/// — how much you can hold — rather than only in color distance.
+pub fn preview_seconds_for_level(level: usize) -> f32 {
+    let steps = (level.saturating_sub(1)) as f32;
+    (1.7 - steps * 0.12).max(0.7)
 }
 
 /// Number of squares on screen at a level. Grows one at a time and stops well
@@ -252,6 +287,7 @@ impl ColorPuzzle {
         let mut puzzle =  Self {
             score: 0,
             current_colors: vec![],
+            base_color: Color::rgb(0.5, 0.5, 0.5),
             correct_color_index: 0,
             game_mode: GameMode::TimeTrial,
             seconds_added_per_success: 3.0,
@@ -288,6 +324,16 @@ impl ColorPuzzle {
                 self.transition_seconds = 1.0;
                 self.seconds_added_per_success = 3.0;
                 self.game_mode = GameMode::TimeTrial;
+            },
+            GameMode::Memory => {
+                // No clock: the pressure in this mode is the preview running
+                // out, and stacking a run timer on top of it only punishes the
+                // player twice for the same thing.
+                self.start_seconds = 0.0;
+                // The board is hidden a beat after it appears, so the round
+                // cannot spend a full second fading the background in first.
+                self.transition_seconds = 0.35;
+                self.game_mode = GameMode::Memory;
             },
         }
    
@@ -386,67 +432,71 @@ impl ColorPuzzle {
 
         let level = self.level();
         let count = color_count_for_level(level);
-        let variation = color_variation_for_level(level);
-        // Every distractor has to be *visibly* off the base in at least one
-        // channel. Without this floor the random walk can land on a duplicate of
-        // the target, which reads to the player as "I picked the right one and
-        // the game said no" — the fastest way to destroy trust in a color game.
-        let min_delta = (variation * 0.4).max(0.025);
+        let delta = color_delta_for_level(level);
 
-        // Keep the base away from the extremes so variation has room to move in
-        // both directions without clamping flattening it back out.
-        let channel = |rng: &mut ThreadRng| rng.gen_range(0.12..0.72);
-        let dominant = rng.gen_range(0..4);
-        let mut red = channel(&mut rng);
-        let mut green = channel(&mut rng);
-        let mut blue = channel(&mut rng);
+        // A base the whole board shares, kept off the extremes of lightness so
+        // the odd color has room to move in any direction and still be
+        // displayable.
+        let base_lab = Self::random_base(&mut rng);
+        let base_color = oklab::to_color(base_lab).unwrap_or(Color::rgb(0.5, 0.5, 0.5));
 
-        // Push one channel up so the round has a recognisable hue instead of
-        // another wash of grey.
-        match dominant {
-            0 => red = rng.gen_range(0.45..0.80),
-            1 => green = rng.gen_range(0.45..0.80),
-            2 => blue = rng.gen_range(0.45..0.80),
-            _ => {}
-        }
+        // The odd one out. Its direction is random, but weighted away from pure
+        // lightness: a square that is simply lighter than its neighbours is the
+        // easiest difference the visual system has, and letting the dice pick it
+        // half the time made levels swing between trivial and hard.
+        let odd_color = Self::odd_color(&mut rng, base_lab, delta).unwrap_or(base_color);
 
-        let base_color = Color::rgb(red, green, blue);
+        let mut colors = vec![base_color; count];
+        self.correct_color_index = rng.gen_range(0..count);
+        colors[self.correct_color_index] = odd_color;
 
-        let mut colors = vec![base_color];
-
-        while colors.len() < count {
-            let mut candidate = base_color;
-
-            // Guarantee movement in one channel, then jitter the rest freely.
-            let forced_channel = rng.gen_range(0..3);
-            for index in 0..3 {
-                let magnitude = if index == forced_channel {
-                    rng.gen_range(min_delta..variation.max(min_delta * 1.5))
-                } else {
-                    rng.gen_range(0.0..variation)
-                };
-                // Both directions: if distractors could only get lighter, the
-                // darkest square on screen would be a free tell.
-                let delta = if rng.gen_bool(0.5) { magnitude } else { -magnitude };
-
-                match index {
-                    0 => candidate.set_r((candidate.r() + delta).clamp(0.0, 1.0)),
-                    1 => candidate.set_g((candidate.g() + delta).clamp(0.0, 1.0)),
-                    _ => candidate.set_b((candidate.b() + delta).clamp(0.0, 1.0)),
-                };
-            }
-
-            // Exact-equality duplicates would produce two "correct" squares,
-            // since `is_correct_color` compares channels directly.
-            if colors.iter().any(|existing| colors_match(*existing, candidate)) {
-                continue;
-            }
-
-            colors.push(candidate);
-        }
-
-        self.correct_color_index = rng.gen_range(0..colors.len());
+        self.base_color = base_color;
         self.current_colors = colors;
+    }
+
+    /// A displayable, reasonably saturated color to build a round on.
+    fn random_base(rng: &mut ThreadRng) -> Oklab {
+        let lightness = rng.gen_range(0.58..0.78);
+        let hue = rng.gen_range(0.0..std::f32::consts::TAU);
+
+        // Walk the chroma down until the color fits in sRGB. Some hues simply
+        // cannot be as saturated as others at a given lightness, and a clamped
+        // color would quietly change the distance the level is set by.
+        let mut chroma = rng.gen_range(0.09..0.16);
+        for _ in 0..12 {
+            let candidate = Oklab::from_lch(lightness, chroma, hue);
+            if oklab::to_color(candidate).is_some() {
+                return candidate;
+            }
+            chroma *= 0.85;
+        }
+
+        Oklab::from_lch(lightness, 0.0, hue)
+    }
+
+    /// A color exactly `delta` away from `base`, in a direction that keeps it
+    /// displayable. `None` if no such direction was found.
+    fn odd_color(rng: &mut ThreadRng, base: Oklab, delta: f32) -> Option<Color> {
+        for _ in 0..48 {
+            let hue = rng.gen_range(0.0..std::f32::consts::TAU);
+            // Mostly chromatic. The lightness share is capped so the difference
+            // usually has to be judged as a hue or saturation shift.
+            let lightness_share = rng.gen_range(-0.45_f32..0.45);
+            let chromatic_share = (1.0 - lightness_share * lightness_share).sqrt();
+
+            let direction = (
+                lightness_share,
+                chromatic_share * hue.cos(),
+                chromatic_share * hue.sin(),
+            );
+
+            let candidate = base.offset(direction, delta);
+            if let Some(color) = oklab::to_color(candidate) {
+                return Some(color);
+            }
+        }
+
+        None
     }
 
     /// 1-based difficulty level, derived from the score.
@@ -481,8 +531,27 @@ impl ColorPuzzle {
         Some(score_for_level(level + 1).saturating_sub(self.score))
     }
 
-    pub fn get_color(&self) -> Color {
-        self.current_colors[self.correct_color_index]
+    /// The board background for this round.
+    ///
+    /// It is the app's dark ground, pulled a little way toward the round's own
+    /// hue so the screen still changes character every round. What it is *not*
+    /// is any square's color: the puzzle used to paint the background with the
+    /// target color, which meant the correct square was invisible and the game
+    /// was really "spot the gap in the layout" — a pop-out the eye solves
+    /// before it has compared anything. The tint is kept far enough away that
+    /// no square can be identified by comparing it to the background.
+    pub fn background_color(&self) -> Color {
+        oklab::mix(theme::BACKGROUND, self.base_color, 0.16)
+    }
+
+    /// The flat color every square wears while a `Memory` round is hidden.
+    pub fn hidden_color(&self) -> Color {
+        theme::SURFACE_HIDDEN
+    }
+
+    /// How long this round's board stays visible in `Memory`.
+    pub fn preview_seconds(&self) -> f32 {
+        preview_seconds_for_level(self.level())
     }
 
     pub fn get_score(&self) -> usize {
@@ -513,8 +582,12 @@ impl ColorPuzzle {
         self.seconds_added_per_success
     }
 
+    /// Whether the square at `index` is the odd one out.
+    ///
+    /// By index, not by color: every other square now shares one color by
+    /// design, so comparing channels would be answering a different question.
     pub fn is_correct_color(&self, index : usize) -> bool {
-        colors_match(self.current_colors[index], self.get_color())
+        index == self.correct_color_index
     }
 
     pub fn setup_timer(&mut self) -> Timer {
@@ -668,14 +741,6 @@ impl GameHistory {
         self.levels.get(index).unwrap()
     }
 
-    pub fn get_previous_level_history(&self, index : usize) -> Option<&LevelHistory> {
-        if index == 0 {
-            return None;
-        }
-        
-        self.levels.get(index - 1)
-    }
-
     pub fn reset(&mut self) {
         self.levels_played = 0;
         self.total_score = 0;
@@ -703,6 +768,59 @@ impl Default for GameHistory {
 #[derive(Resource, Reflect, Debug)]
 pub struct GameTimer {
     pub timer: Timer,
+}
+
+/// Drives a `Memory` round: board visible, then blank.
+///
+/// Kept as a resource rather than a component on the squares because the phase
+/// belongs to the round, not to any one square — and because the squares are
+/// despawned and respawned between rounds.
+#[derive(Resource, Default)]
+pub struct MemoryPhase {
+    preview: Option<Timer>,
+    hidden: bool,
+}
+
+impl MemoryPhase {
+    /// Starts the preview for a new board.
+    pub fn begin(&mut self, seconds: f32) {
+        self.preview = Some(Timer::from_seconds(seconds, TimerMode::Once));
+        self.hidden = false;
+    }
+
+    /// Nothing to hide: the mode is off, or the board is already blank.
+    pub fn clear(&mut self) {
+        self.preview = None;
+        self.hidden = false;
+    }
+
+    /// Whether the colors are still on screen. Input is refused while they are:
+    /// picking during the preview would make the mode a normal round.
+    pub fn is_previewing(&self) -> bool {
+        self.preview.is_some()
+    }
+
+    pub fn is_hidden(&self) -> bool {
+        self.hidden
+    }
+
+    /// Advances the preview. Returns true on the frame it ends, which is the
+    /// frame the board should go blank.
+    pub fn tick(&mut self, delta: std::time::Duration) -> bool {
+        let Some(timer) = self.preview.as_mut() else {
+            return false;
+        };
+
+        timer.tick(delta);
+
+        if timer.finished() {
+            self.preview = None;
+            self.hidden = true;
+            return true;
+        }
+
+        false
+    }
 }
 
 /// Holds the current board in place for a beat after a wrong pick.

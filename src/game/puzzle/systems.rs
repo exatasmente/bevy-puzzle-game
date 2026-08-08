@@ -16,11 +16,12 @@ pub fn player_interaction(
     camera_q: Query<(&Camera, &GlobalTransform, &BackgroundTranstion)>,
     event_click  : Res<Input<MouseButton>>,
     touches: Res<Touches>,
-    mut object_query: Query<(&Transform, &PuzzleColor), With<PuzzleColor>>,
+    mut object_query: Query<(&Transform, &PuzzleColor, &mut Fill), With<PuzzleColor>>,
     ui_interaction_query: Query<&Interaction>,
     mut puzzle: ResMut<ColorPuzzle>,
     mut game_timer: ResMut<GameTimer>,
     mut pending_level_start: ResMut<PendingLevelStart>,
+    memory_phase: Res<MemoryPhase>,
     mut start_level_event_writer: EventWriter<StartLevelEvent>,
     mut last_interraction_event_writer: EventWriter<LastInteractionEvent>,
     mut interaction_animation_event_writer: EventWriter<InteractionAnimationEvent>,
@@ -43,6 +44,12 @@ pub fn player_interaction(
 
     // The board is being held so the player can see what they missed.
     if pending_level_start.is_holding() {
+        return;
+    }
+
+    // In Memory, the colors are still on screen. Accepting a pick now would
+    // turn the mode back into an ordinary round.
+    if memory_phase.is_previewing() {
         return;
     }
 
@@ -78,7 +85,7 @@ pub fn player_interaction(
         let mut correct_position = None;
         let mut correct_size = puzzle.shape_size;
 
-        for (transform, puzzle_color) in object_query.iter_mut() {
+        for (transform, puzzle_color, _) in object_query.iter_mut() {
             colors.push(puzzle_color.as_level_color());
 
             if puzzle_color.is_correct_color {
@@ -131,9 +138,39 @@ pub fn player_interaction(
         } else {
             // Hold the board so the reveal has something to point at.
             pending_level_start.hold();
+
+            // A blank board has nothing to learn from. Put the colors back for
+            // the length of the hold, so a missed Memory round still shows the
+            // player what they were supposed to have remembered.
+            if memory_phase.is_hidden() {
+                for (_, puzzle_color, mut fill) in object_query.iter_mut() {
+                    *fill = Fill::color(puzzle_color.color);
+                }
+            }
         }
     }
 
+}
+
+/// Blanks a `Memory` board when its preview runs out.
+///
+/// Repainting `Fill` leaves the entities — and so the hit test and the answer
+/// reveal — untouched: the squares are still exactly where they were, they just
+/// stop telling the player which is which.
+pub fn hide_memory_board(
+    time: Res<Time>,
+    puzzle: Res<ColorPuzzle>,
+    mut memory_phase: ResMut<MemoryPhase>,
+    mut square_query: Query<&mut Fill, With<PuzzleColor>>,
+) {
+    if !memory_phase.tick(time.delta()) {
+        return;
+    }
+
+    let hidden = puzzle.hidden_color();
+    for mut fill in square_query.iter_mut() {
+        *fill = Fill::color(hidden);
+    }
 }
 
 /// Starts the next round once a post-miss hold expires.
@@ -151,7 +188,6 @@ pub fn advance_pending_level(
 pub fn render_game_history(
     mut commands: Commands,
     game_history: Res<GameHistory>,
-    puzzle: Res<ColorPuzzle>,
     mut render_game_history_events: EventReader<RenderLevelHistoryEvent>,
     mut object_query: Query<Entity, With<PuzzleColor>>,
     mut last_click_query: Query<Entity, With<LastClick>>,
@@ -176,20 +212,15 @@ pub fn render_game_history(
 
 
     let level_history = game_history.get_level_history(event.index);
-    let previous_level_history = game_history.get_previous_level_history(event.index);
     let (mut camera, mut background_transition) = camera_query.single_mut();
 
+    // A replay is read, not played, so it sits on the plain app background
+    // rather than reproducing the round's tint.
     background_transition.reset();
-    if previous_level_history.is_some() {
-        let previous_level_history = previous_level_history.unwrap();
-        background_transition.set_start_color(previous_level_history.get_correct_color());
-    } else {
-        background_transition.set_start_color(puzzle.get_color());
-    }
+    background_transition.set_start_color(theme::BACKGROUND);
+    background_transition.set_end_color(theme::BACKGROUND);
 
-    background_transition.set_end_color(level_history.get_correct_color());
-
-    camera.clear_color = ClearColorConfig::Custom(Color::BLACK);
+    camera.clear_color = ClearColorConfig::Custom(theme::BACKGROUND);
 
     let mut z = 0.0;
     level_history.for_each_color(|index, color| {
@@ -361,6 +392,7 @@ pub fn spawn_objects(
     mut puzzle: ResMut<ColorPuzzle>,
     mut camera_query: Query<(&mut Camera2d, &mut BackgroundTranstion), With<Camera>>,
     mut last_click_query: Query<Entity, With<LastClick>>,
+    mut memory_phase: ResMut<MemoryPhase>,
     mut start_level_events: EventReader<StartLevelEvent>,
 ) {
 
@@ -376,16 +408,25 @@ pub fn spawn_objects(
         commands.entity(entity).despawn();
     }
 
-    let current_color = puzzle.get_color();
+    let previous_background = puzzle.background_color();
     puzzle.generate_colors();
 
     let (mut camera, mut background_transition) = camera_query.single_mut();
 
+    // The background is the app's dark ground with a hint of this round's hue,
+    // never a square's color. Painting it with the target used to make the
+    // correct square invisible, which turned the game into "find the gap".
     background_transition.reset();
-    background_transition.set_end_color(puzzle.get_color());
-    background_transition.set_start_color(current_color);
+    background_transition.set_end_color(puzzle.background_color());
+    background_transition.set_start_color(previous_background);
     background_transition.set_time(puzzle.transition_seconds);
-    camera.clear_color = ClearColorConfig::Custom(puzzle.get_color());
+    camera.clear_color = ClearColorConfig::Custom(previous_background);
+
+    if puzzle.game_mode.hides_colors() {
+        memory_phase.begin(puzzle.preview_seconds());
+    } else {
+        memory_phase.clear();
+    }
 
     // Collect first: laying the board out needs the square count, and writing
     // the resulting cell size back to the puzzle needs the borrow released.
@@ -437,11 +478,13 @@ pub fn start_puzzle_level(
     mut game_timer: ResMut<GameTimer>,
     mut game_history: ResMut<GameHistory>,
     mut pending_level_start: ResMut<PendingLevelStart>,
+    mut memory_phase: ResMut<MemoryPhase>,
     window_query: Query<&Window, With<Window>>
 ) {
     // A hold left over from a miss in a previous run would swallow the first
     // pick of this one.
     pending_level_start.clear();
+    memory_phase.clear();
 
     let window = window_query.single();
     puzzle.set_window_size(window.width(), window.height());
@@ -517,9 +560,11 @@ pub fn despaw_objects(
     mut object_query: Query<Entity, With<PuzzleColorGame>>,
     mut puzzle: ResMut<ColorPuzzle>,
     mut pending_level_start: ResMut<PendingLevelStart>,
+    mut memory_phase: ResMut<MemoryPhase>,
 ) {
 
     pending_level_start.clear();
+    memory_phase.clear();
 
     for entity in object_query.iter_mut() {
         commands.entity(entity).despawn();

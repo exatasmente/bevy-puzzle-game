@@ -190,6 +190,37 @@ fn spawn_button<M: Component>(
         });
 }
 
+/// Rebuilds the summary for the new window size. See `relayout_main_menu`.
+pub fn relayout_game_over_menu(
+    mut commands: Commands,
+    mut relayout_events: EventReader<crate::layout::RelayoutEvent>,
+    menu_query: Query<Entity, With<GameOverMenu>>,
+    asset_server: Res<AssetServer>,
+    game_history: Res<GameHistory>,
+    outcome: Res<LastRunOutcome>,
+    window_query: Query<&Window>,
+) {
+    if relayout_events.iter().next().is_none() {
+        return;
+    }
+
+    let Ok(window) = window_query.get_single() else {
+        return;
+    };
+
+    for entity in menu_query.iter() {
+        commands.entity(entity).despawn_recursive();
+    }
+
+    build_game_over_menu(
+        &mut commands,
+        &asset_server,
+        &game_history,
+        &outcome,
+        theme::content_width(window.width()),
+    );
+}
+
 pub fn despawn_game_over_menu(
     mut commands: Commands,
     game_over_menu_query: Query<Entity, With<GameOverMenu>>,
