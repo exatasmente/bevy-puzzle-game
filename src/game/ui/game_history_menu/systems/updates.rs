@@ -20,10 +20,17 @@ pub fn spawn_pagination_itens(
     asset_server: Res<AssetServer>,
     mut pagination: ResMut<Pagination>,
     mut spawn_pagination_event_reader: EventReader<SpawnPaginationEvent>,
+    window_query: Query<&Window>,
 ) {
     if spawn_pagination_event_reader.iter().count() == 0 {
         return;
     }
+
+    let width = window_query
+        .get_single()
+        .map(|window| theme::content_width(window.width()))
+        .unwrap_or(theme::CONTENT_MAX_WIDTH);
+    let label_width = history_card_label_width(width);
 
     pagination.set_max_page(game_history.levels_played);
 
@@ -33,21 +40,18 @@ pub fn spawn_pagination_itens(
     commands.entity(parent).despawn_descendants();
 
     commands.entity(parent).with_children(|parent| {
-        parent.spawn(TextBundle {
-            text: Text::from_section("PAUSA", get_title_text_style(&asset_server))
-                .with_alignment(TextAlignment::Center),
-            ..default()
-        });
+        parent.spawn(theme::wrapped_text(
+            "PAUSA",
+            get_title_text_style(&asset_server),
+            width,
+        ));
 
         if game_history.levels_played == 0 {
-            parent.spawn(TextBundle {
-                text: Text::from_section(
-                    "NENHUM DESAFIO AINDA",
-                    get_label_text_style(&asset_server),
-                )
-                .with_alignment(TextAlignment::Center),
-                ..default()
-            });
+            parent.spawn(theme::wrapped_text(
+                "NENHUM DESAFIO AINDA",
+                get_label_text_style(&asset_server),
+                width,
+            ));
         }
 
         game_history.for_each_level(
@@ -57,7 +61,7 @@ pub fn spawn_pagination_itens(
                 parent
                     .spawn((
                         ButtonBundle {
-                            style: HISTORY_CARD_STYLE,
+                            style: history_card_style(width),
                             background_color: BUTTON.into(),
                             ..default()
                         },
@@ -71,54 +75,56 @@ pub fn spawn_pagination_itens(
                             ..default()
                         });
 
-                        parent.spawn(TextBundle {
-                            text: Text::from_section(
-                                format!("DESAFIO {}", index + 1),
-                                get_button_text_style(&asset_server),
-                            ),
-                            ..default()
-                        });
+                        parent.spawn(theme::wrapped_text(
+                            format!("DESAFIO {}", index + 1),
+                            get_button_text_style(&asset_server),
+                            label_width,
+                        ));
 
                         // "OK"/"X" rather than a check mark: the display font
                         // has no glyph for one, and it would render blank.
-                        parent.spawn(TextBundle {
-                            text: Text::from_section(
-                                if scored { "OK" } else { "X" },
-                                theme::text(
-                                    &asset_server,
-                                    theme::TEXT_SM,
-                                    if scored { theme::SUCCESS } else { theme::DANGER },
-                                ),
+                        parent.spawn(theme::wrapped_text(
+                            if scored { "OK" } else { "X" },
+                            theme::text(
+                                &asset_server,
+                                theme::TEXT_SM,
+                                if scored { theme::SUCCESS } else { theme::DANGER },
                             ),
-                            ..default()
-                        });
+                            40.0,
+                        ));
                     });
             },
             pagination.get_start_index(),
             pagination.get_items_per_page(),
         );
 
-        build_pagination_element(&asset_server, parent, &mut pagination);
-        build_actions(&asset_server, parent);
+        // No rounds, no pager: an empty run would otherwise show "PAGINA 1 DE
+        // 1" directly under "NENHUM DESAFIO AINDA".
+        if game_history.levels_played > 0 {
+            build_pagination_element(&asset_server, parent, &mut pagination, width);
+        }
+        build_actions(&asset_server, parent, width);
     });
 }
 
-fn build_actions(asset_server: &Res<AssetServer>, parent: &mut ChildBuilder) {
+fn build_actions(asset_server: &Res<AssetServer>, parent: &mut ChildBuilder, width: f32) {
+    let text_width = theme::button_text_width(width);
+
     parent
         .spawn((
             ButtonBundle {
-                style: BUTTON_STYLE,
+                style: button_style(width),
                 background_color: BUTTON.into(),
                 ..default()
             },
             ContinueButton,
         ))
         .with_children(|parent| {
-            parent.spawn(TextBundle {
-                text: Text::from_section("CONTINUAR", get_button_text_style(asset_server))
-                    .with_alignment(TextAlignment::Center),
-                ..default()
-            });
+            parent.spawn(theme::wrapped_text(
+                "CONTINUAR",
+                get_button_text_style(asset_server),
+                text_width,
+            ));
         });
 
     // Without this there is no way to finish an Infinite run: that mode has no
@@ -127,18 +133,18 @@ fn build_actions(asset_server: &Res<AssetServer>, parent: &mut ChildBuilder) {
     parent
         .spawn((
             ButtonBundle {
-                style: BUTTON_STYLE,
+                style: button_style(width),
                 background_color: BUTTON.into(),
                 ..default()
             },
             EndRunButton,
         ))
         .with_children(|parent| {
-            parent.spawn(TextBundle {
-                text: Text::from_section("ENCERRAR PARTIDA", get_button_text_style(asset_server))
-                    .with_alignment(TextAlignment::Center),
-                ..default()
-            });
+            parent.spawn(theme::wrapped_text(
+                "ENCERRAR PARTIDA",
+                get_button_text_style(asset_server),
+                text_width,
+            ));
         });
 }
 
@@ -146,6 +152,7 @@ fn build_pagination_element(
     asset_server: &Res<AssetServer>,
     parent: &mut ChildBuilder,
     pagination: &mut ResMut<Pagination>,
+    width: f32,
 ) {
     if pagination.max_page == 0 {
         return;
@@ -153,7 +160,7 @@ fn build_pagination_element(
 
     parent
         .spawn(NodeBundle {
-            style: PAGINATION_CONTAINER_STYLE,
+            style: pagination_container_style(width),
             ..default()
         })
         .with_children(|parent| {
@@ -168,18 +175,16 @@ fn build_pagination_element(
                 },
             );
 
-            parent.spawn(TextBundle {
-                text: Text::from_section(
-                    format!(
-                        "PAGINA {} DE {}",
-                        pagination.current_page + 1,
-                        pagination.max_page
-                    ),
-                    get_label_text_style(asset_server),
-                )
-                .with_alignment(TextAlignment::Center),
-                ..default()
-            });
+            parent.spawn(theme::wrapped_text(
+                format!(
+                    "PAGINA {} DE {}",
+                    pagination.current_page + 1,
+                    pagination.max_page
+                ),
+                get_label_text_style(asset_server),
+                // The two arrows and the gaps between them take the rest.
+                width - theme::TOUCH_TARGET * 2.0 - theme::SPACE_SM * 2.0,
+            ));
 
             spawn_pagination_button(
                 parent,
@@ -210,10 +215,10 @@ fn spawn_pagination_button(
             PaginationOption { index },
         ))
         .with_children(|parent| {
-            parent.spawn(TextBundle {
-                text: Text::from_section(label, get_pagination_button_text_style(asset_server))
-                    .with_alignment(TextAlignment::Center),
-                ..default()
-            });
+            parent.spawn(theme::wrapped_text(
+                label,
+                get_pagination_button_text_style(asset_server),
+                theme::TOUCH_TARGET,
+            ));
         });
 }

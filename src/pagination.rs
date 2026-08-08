@@ -16,7 +16,10 @@ impl Default for Pagination {
             max_page: 0,
             // Four rows plus the title, pager and two action buttons is what
             // fits on a 480px-tall phone without clipping.
-            items_per_page: 4,
+            // Three rounds a page. Four plus the title, the pager and the two
+            // actions ran past the bottom of a 480px-tall phone, which is the
+            // smallest window this game allows.
+            items_per_page: 3,
             entity: None,
         }
     }

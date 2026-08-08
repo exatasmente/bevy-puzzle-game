@@ -49,11 +49,11 @@ pub fn build_hud(commands: &mut Commands, asset_server: &Res<AssetServer>) -> En
                             HistoryButtom,
                         ))
                         .with_children(|parent| {
-                            parent.spawn(TextBundle {
-                                text: Text::from_section("||", theme::text_button(asset_server))
-                                    .with_alignment(TextAlignment::Center),
-                                ..default()
-                            });
+                            parent.spawn(theme::wrapped_text(
+                                "||",
+                                theme::text_button(asset_server),
+                                theme::TOUCH_TARGET,
+                            ));
                         });
                 });
 
@@ -65,10 +65,11 @@ pub fn build_hud(commands: &mut Commands, asset_server: &Res<AssetServer>) -> En
                 })
                 .with_children(|parent| {
                     parent.spawn((
-                        TextBundle {
-                            text: Text::from_section("NIVEL 1", theme::text_label(asset_server)),
-                            ..default()
-                        },
+                        theme::wrapped_text(
+                            "NIVEL 1",
+                            theme::text_label(asset_server),
+                            theme::CONTENT_MAX_WIDTH,
+                        ),
                         LevelValueText,
                     ));
                 });
@@ -95,6 +96,10 @@ pub fn build_hud(commands: &mut Commands, asset_server: &Res<AssetServer>) -> En
         .id()
 }
 
+/// Widest a stat's label or value may be before it wraps. Stats flex, so this
+/// is a ceiling rather than the column width.
+const STAT_TEXT_WIDTH: f32 = 96.0;
+
 /// A label stacked over a value, tagged with the marker used to update it.
 fn spawn_stat<M: Component + Default>(
     parent: &mut ChildBuilder,
@@ -109,20 +114,17 @@ fn spawn_stat<M: Component + Default>(
             ..default()
         })
         .with_children(|parent| {
-            parent.spawn(TextBundle {
-                text: Text::from_section(label, theme::text_label(asset_server))
-                    .with_alignment(TextAlignment::Center),
-                ..default()
-            });
+            parent.spawn(theme::wrapped_text(
+                label,
+                theme::text_label(asset_server),
+                STAT_TEXT_WIDTH,
+            ));
             parent.spawn((
-                TextBundle {
-                    text: Text::from_section(
-                        initial_value,
-                        theme::text(asset_server, theme::TEXT_MD, value_color),
-                    )
-                    .with_alignment(TextAlignment::Center),
-                    ..default()
-                },
+                theme::wrapped_text(
+                    initial_value,
+                    theme::text(asset_server, theme::TEXT_MD, value_color),
+                    STAT_TEXT_WIDTH,
+                ),
                 M::default(),
             ));
         });
@@ -141,18 +143,18 @@ pub fn spawn_back_button(mut commands: Commands, asset_server: Res<AssetServer>)
             parent
                 .spawn((
                     ButtonBundle {
-                        style: BACK_BUTTON_STYLE,
+                        style: theme::button_style(BACK_BUTTON_WIDTH),
                         background_color: BUTTON.into(),
                         ..default()
                     },
                     HistoryBackButtom,
                 ))
                 .with_children(|parent| {
-                    parent.spawn(TextBundle {
-                        text: Text::from_section("VOLTAR", theme::text_button(&asset_server))
-                            .with_alignment(TextAlignment::Center),
-                        ..default()
-                    });
+                    parent.spawn(theme::wrapped_text(
+                        "VOLTAR",
+                        theme::text_button(&asset_server),
+                        theme::button_text_width(BACK_BUTTON_WIDTH),
+                    ));
                 });
         });
 }

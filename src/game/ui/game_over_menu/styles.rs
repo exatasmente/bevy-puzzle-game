@@ -22,37 +22,39 @@ pub const GAME_OVER_MENU_CONTAINER_STYLE: Style = Style {
     justify_content: JustifyContent::Center,
     align_items: AlignItems::Center,
     size: Size::new(Val::Percent(100.0), Val::Percent(100.0)),
-    padding: UiRect::all(Val::Px(theme::SPACE_LG)),
+    // The summary is a tall stack — score, record, stats, three buttons — and
+    // SPACE_LG on every side was enough to push the last button off a short
+    // screen.
+    padding: UiRect::all(Val::Px(theme::SPACE_MD)),
     gap: Size::new(Val::Px(theme::SPACE_SM), Val::Px(theme::SPACE_SM)),
     ..Style::DEFAULT
 };
 
 /// Row holding one stat label and its value, pushed to opposite edges so the
 /// numbers line up in a column the eye can scan.
-pub const STAT_ROW_STYLE: Style = Style {
-    flex_direction: FlexDirection::Row,
-    justify_content: JustifyContent::SpaceBetween,
-    align_items: AlignItems::Center,
-    size: Size::new(Val::Percent(80.0), Val::Px(30.0)),
-    ..Style::DEFAULT
-};
+pub fn stat_row_style(width: f32) -> Style {
+    Style {
+        flex_direction: FlexDirection::Row,
+        justify_content: JustifyContent::SpaceBetween,
+        align_items: AlignItems::Center,
+        size: Size::new(Val::Px(width), Val::Auto),
+        min_size: Size::new(Val::Px(width), Val::Px(30.0)),
+        ..Style::DEFAULT
+    }
+}
 
-pub const BUTTON_STYLE: Style = Style {
-    size: Size::new(Val::Percent(80.0), Val::Px(theme::TOUCH_TARGET)),
-    justify_content: JustifyContent::Center,
-    align_items: AlignItems::Center,
-    margin: UiRect::all(Val::Px(theme::SPACE_XS)),
-    ..Style::DEFAULT
-};
+pub fn button_style(width: f32) -> Style {
+    theme::button_style(width)
+}
 
 /// Primary action: taller than the rest so the thumb finds it first.
-pub const PRIMARY_BUTTON_STYLE: Style = Style {
-    size: Size::new(Val::Percent(80.0), Val::Px(60.0)),
-    justify_content: JustifyContent::Center,
-    align_items: AlignItems::Center,
-    margin: UiRect::all(Val::Px(theme::SPACE_SM)),
-    ..Style::DEFAULT
-};
+pub fn primary_button_style(width: f32) -> Style {
+    Style {
+        min_size: Size::new(Val::Px(width), Val::Px(60.0)),
+        margin: UiRect::all(Val::Px(theme::SPACE_SM)),
+        ..theme::button_style(width)
+    }
+}
 
 pub fn get_title_text_style(asset_server: &Res<AssetServer>) -> TextStyle {
     theme::text_title(asset_server)

@@ -19,48 +19,58 @@ pub const HISTORY_MENU_CONTAINER_STYLE: Style = Style {
     justify_content: JustifyContent::Center,
     align_items: AlignItems::Center,
     size: Size::new(Val::Percent(100.0), Val::Percent(100.0)),
-    padding: UiRect::all(Val::Px(theme::SPACE_MD)),
+    padding: UiRect::all(Val::Px(theme::SPACE_SM)),
     gap: Size::new(Val::Px(theme::SPACE_XS), Val::Px(theme::SPACE_XS)),
     ..Style::DEFAULT
 };
 
 /// One past round: swatch, label, outcome.
-pub const HISTORY_CARD_STYLE: Style = Style {
-    flex_direction: FlexDirection::Row,
-    justify_content: JustifyContent::SpaceBetween,
-    align_items: AlignItems::Center,
-    size: Size::new(Val::Percent(88.0), Val::Px(theme::TOUCH_TARGET)),
-    max_size: Size::new(Val::Px(420.0), Val::Auto),
-    padding: UiRect::all(Val::Px(theme::SPACE_SM)),
-    margin: UiRect::all(Val::Px(theme::SPACE_XS)),
-    ..Style::DEFAULT
-};
+pub fn history_card_style(width: f32) -> Style {
+    Style {
+        flex_direction: FlexDirection::Row,
+        justify_content: JustifyContent::SpaceBetween,
+        align_items: AlignItems::Center,
+        size: Size::new(Val::Px(width), Val::Auto),
+        min_size: Size::new(Val::Px(width), Val::Px(theme::TOUCH_TARGET)),
+        padding: UiRect::all(Val::Px(theme::SPACE_SM)),
+        margin: UiRect::all(Val::Px(theme::SPACE_XS)),
+        ..Style::DEFAULT
+    }
+}
+
+/// Width left for the round's label once the swatch and the outcome mark have
+/// taken their share of the card.
+pub fn history_card_label_width(width: f32) -> f32 {
+    (width - theme::SPACE_SM * 2.0 - SWATCH_SIZE - 40.0).max(60.0)
+}
+
+pub const SWATCH_SIZE: f32 = 32.0;
 
 /// The color the round was actually asking for.
 pub const SWATCH_STYLE: Style = Style {
-    size: Size::new(Val::Px(32.0), Val::Px(32.0)),
+    // `min_size` too: a flex row with a long label would otherwise shrink the
+    // swatch to nothing, and the swatch is the whole point of the row.
+    size: Size::new(Val::Px(SWATCH_SIZE), Val::Px(SWATCH_SIZE)),
+    min_size: Size::new(Val::Px(SWATCH_SIZE), Val::Px(SWATCH_SIZE)),
     ..Style::DEFAULT
 };
 
-pub const BUTTON_STYLE: Style = Style {
-    size: Size::new(Val::Percent(88.0), Val::Px(theme::TOUCH_TARGET)),
-    max_size: Size::new(Val::Px(420.0), Val::Auto),
-    justify_content: JustifyContent::Center,
-    align_items: AlignItems::Center,
-    margin: UiRect::all(Val::Px(theme::SPACE_XS)),
-    ..Style::DEFAULT
-};
+pub fn button_style(width: f32) -> Style {
+    theme::button_style(width)
+}
 
-pub const PAGINATION_CONTAINER_STYLE: Style = Style {
-    display: Display::Flex,
-    flex_direction: FlexDirection::Row,
-    justify_content: JustifyContent::Center,
-    align_items: AlignItems::Center,
-    size: Size::new(Val::Percent(88.0), Val::Px(theme::TOUCH_TARGET)),
-    gap: Size::new(Val::Px(theme::SPACE_SM), Val::Px(theme::SPACE_SM)),
-    margin: UiRect::all(Val::Px(theme::SPACE_XS)),
-    ..Style::DEFAULT
-};
+pub fn pagination_container_style(width: f32) -> Style {
+    Style {
+        display: Display::Flex,
+        flex_direction: FlexDirection::Row,
+        justify_content: JustifyContent::Center,
+        align_items: AlignItems::Center,
+        size: Size::new(Val::Px(width), Val::Px(theme::TOUCH_TARGET)),
+        gap: Size::new(Val::Px(theme::SPACE_SM), Val::Px(theme::SPACE_SM)),
+        margin: UiRect::all(Val::Px(theme::SPACE_XS)),
+        ..Style::DEFAULT
+    }
+}
 
 pub const BUTTON_PAGINATION_STYLE: Style = Style {
     size: Size::new(Val::Px(theme::TOUCH_TARGET), Val::Px(theme::TOUCH_TARGET)),

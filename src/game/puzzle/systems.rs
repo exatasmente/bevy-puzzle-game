@@ -6,7 +6,6 @@ use crate::feedback::BannerEvent;
 use crate::theme;
 use super::components::*;
 use crate::systems::BackgroundTranstion;
-const N_OF_COLS: usize = 6;
 
 #[derive(Component)]
 pub struct LastClick;
@@ -48,17 +47,27 @@ pub fn player_interaction(
     }
 
     if !background_transtion.is_in_transition() && (event_click.just_released(MouseButton::Left) || touches.any_just_pressed()) {
-        let is_touch = touches.first_pressed_position().is_some();
-        let world_position;
-
-        if is_touch {
-            let temp_world_position =  camera.viewport_to_world_2d(camera_transform, touches.first_pressed_position().unwrap()).unwrap();
-            world_position = Vec2::new(temp_world_position.x, temp_world_position.y * -1.0);
+        // Bevy 0.10's `viewport_to_world_2d` maps its argument straight to NDC
+        // without flipping y, so it wants a position whose origin is the
+        // *bottom* left — which is what `cursor_position` returns. Touches are
+        // the odd one out: `bevy_winit` passes them through in winit's
+        // top-left convention, so they need converting first.
+        //
+        // The touch branch used to convert after the fact instead, by negating
+        // the resulting world y. That happens to agree with this only while the
+        // camera sits exactly at the origin; converting the input is what
+        // actually means "the point the finger is on".
+        let screen_position = if let Some(touch) = touches.first_pressed_position() {
+            Vec2::new(touch.x, window.height() - touch.y)
+        } else if let Some(cursor) = window.cursor_position() {
+            cursor
         } else {
-            world_position = window
-            .cursor_position()
-            .and_then(|cursor| camera.viewport_to_world_2d(camera_transform, cursor)).unwrap();
-        }
+            return;
+        };
+
+        let Some(world_position) = camera.viewport_to_world_2d(camera_transform, screen_position) else {
+            return;
+        };
 
         for last_click in last_click_query.iter() {
             commands.entity(last_click).despawn_recursive();
@@ -67,15 +76,17 @@ pub fn player_interaction(
         let mut scored = false;
         let mut colors = Vec::new();
         let mut correct_position = None;
+        let mut correct_size = puzzle.shape_size;
 
         for (transform, puzzle_color) in object_query.iter_mut() {
             colors.push(puzzle_color.as_level_color());
 
             if puzzle_color.is_correct_color {
                 correct_position = Some(Vec2::new(puzzle_color.x, puzzle_color.y));
+                correct_size = puzzle_color.size;
             }
 
-            if mouse_hover(transform.translation, world_position, puzzle.shape_size) && puzzle_color.is_correct_color {
+            if mouse_hover(transform.translation, world_position, puzzle_color.size) && puzzle_color.is_correct_color {
                 scored = true;
             }
         }
@@ -97,7 +108,7 @@ pub fn player_interaction(
             bonus_seconds,
             // Only meaningful on a miss, where it drives the answer reveal.
             correct_position,
-            shape_size: puzzle.shape_size,
+            shape_size: correct_size,
         });
 
         if leveled_up {
@@ -180,14 +191,18 @@ pub fn render_game_history(
 
     camera.clear_color = ClearColorConfig::Custom(Color::BLACK);
 
-    let shape =  shapes::Rectangle {
-        extents: Vec2::new(puzzle.shape_size, puzzle.shape_size),
-        origin: shapes::RectangleOrigin::BottomLeft,
-    };
     let mut z = 0.0;
     level_history.for_each_color(|index, color| {
         let fill = Fill::color(color.color);
         let is_correct_color = color.is_correct_color;
+        // Each square remembers its own size, so a round played on a different
+        // window size still replays as the board the player actually saw.
+        let size = color.size;
+
+        let shape = shapes::Rectangle {
+            extents: Vec2::new(size, size),
+            origin: shapes::RectangleOrigin::BottomLeft,
+        };
 
         commands
             .spawn((
@@ -201,13 +216,13 @@ pub fn render_game_history(
                     ..default()
                 },
                 fill,
-                PuzzleColor { index, is_correct_color:  color.is_correct_color, x : color.x , y:  color.y, color: color.color.clone()},
+                PuzzleColor { index, is_correct_color:  color.is_correct_color, x : color.x , y:  color.y, color: color.color.clone(), size },
             )
         );
 
         if is_correct_color {
             let inner_shape =  shapes::Rectangle {
-                extents: Vec2::new(puzzle.shape_size - 20.0, puzzle.shape_size - 20.0),
+                extents: Vec2::new(size - 20.0, size - 20.0),
                 origin: shapes::RectangleOrigin::BottomLeft,
             };
             commands .spawn((
@@ -271,21 +286,20 @@ pub fn store_last_interaction_state(
     }
 }
 
-fn mouse_hover(translation: Vec3, delta: Vec2, shape_size : f32) -> bool {
-    let x1 = translation.x;
-    let y1 = translation.y;
-    let x2 = translation.x + shape_size;
-    let y2 = translation.y + shape_size;
-    let x3 = delta.x;
-    let y3 = delta.y;
-    let x4 = x3 + 30.0;
-    let y4 = y3 + 30.0;
-    cord_is_intersecting(x1, y1, x2, y2, x3, y3, x4, y4)
-}
-
-
-fn random_range(min: f32, max: f32) -> f32 {
-    rand::random::<f32>() * (max - min) + min
+/// Whether a pick landed inside a square.
+///
+/// `translation` is the square's bottom-left corner: the shapes are built with
+/// `RectangleOrigin::BottomLeft`.
+///
+/// This used to test a 30x30 box growing up and to the right of the pick rather
+/// than the pick itself, which let a tap in the gap below-left of the target
+/// score as a hit. Harmless when squares were scattered; on a grid it would
+/// hand out points for tapping the wrong square.
+fn mouse_hover(translation: Vec3, point: Vec2, shape_size : f32) -> bool {
+    point.x >= translation.x
+        && point.x <= translation.x + shape_size
+        && point.y >= translation.y
+        && point.y <= translation.y + shape_size
 }
 
 
@@ -341,13 +355,6 @@ pub fn tick_game_timer(
     }
 }
 
-fn cord_is_intersecting(
-    x1: f32, y1: f32, x2: f32, y2: f32,
-    x3: f32, y3: f32, x4: f32, y4: f32,
-) -> bool {
-    !(x1 > x4 || x3 > x2 || y1 > y4 || y3 > y2)
-}
-
 pub fn spawn_objects(
     mut commands: Commands,
     mut object_query: Query<Entity, With<PuzzleColor>>,
@@ -380,66 +387,48 @@ pub fn spawn_objects(
     background_transition.set_time(puzzle.transition_seconds);
     camera.clear_color = ClearColorConfig::Custom(puzzle.get_color());
 
-    let mut n_of_rows = 0;
-
-    let mut used_spaces = Vec::new();
-    let mut z = 0.0;
-    puzzle.for_each_color( |index,color, is_correct_color| {
-
-        let shape =  shapes::Rectangle {
-            extents: Vec2::new(
-                puzzle.shape_size,
-                puzzle.shape_size,
-            ),
-            origin: shapes::RectangleOrigin::BottomLeft,
-        };
-
-        if index % N_OF_COLS == 0 {
-            n_of_rows += 1;
-        }
-
-        let mut x = random_range(((puzzle.get_width() - puzzle.shape_size) / 2.0 ) * -1.0 , (puzzle.get_width()  - puzzle.shape_size)  / 2.0 );
-        let mut y = random_range(((puzzle.get_height() - puzzle.shape_size)  / 2.0 ) * -1.0 , (puzzle.get_height() - puzzle.shape_size)  / 2.0 );
-        let mut exists = used_spaces.iter().any(|(start_x, start_y, end_x, end_y)| {
-            cord_is_intersecting(
-                x, y, x + puzzle.shape_size, y + puzzle.shape_size,
-                *start_x, *start_y, *end_x, *end_y
-            )
-        });
-
-        let mut max_tries = 100;
-        while exists && max_tries > 0 {
-            x = random_range(((puzzle.get_width() - puzzle.shape_size) / 2.0 ) * -1.0 , (puzzle.get_width()  - puzzle.shape_size)  / 2.0 );
-            y = random_range(((puzzle.get_height() - puzzle.shape_size)  / 2.0 ) * -1.0 , (puzzle.get_height() - puzzle.shape_size)  / 2.0 );
-
-            exists = used_spaces.iter().any(|(start_x, start_y, end_x, end_y)| {
-                cord_is_intersecting(
-                    x, y, x + puzzle.shape_size, y + puzzle.shape_size,
-                    *start_x, *start_y, *end_x, *end_y
-                )
-            });
-            max_tries -= 1;
-        }
-
-        used_spaces.push((x,y, x + puzzle.shape_size, y + puzzle.shape_size));
-
-        commands
-            .spawn((
-                ShapeBundle {
-                    path: GeometryBuilder::build_as(&shape),
-                    transform: Transform::from_xyz(x , y , z),
-                    ..default()
-                },
-                Fill::color(color),
-                PuzzleColor { index, is_correct_color, x , y, color: color.clone()},
-                PuzzleColorGame {},
-
-            )
-        );
-        z += 0.1;
+    // Collect first: laying the board out needs the square count, and writing
+    // the resulting cell size back to the puzzle needs the borrow released.
+    let mut colors = Vec::new();
+    puzzle.for_each_color(|index, color, is_correct_color| {
+        colors.push((index, color, is_correct_color));
     });
 
+    let grid = puzzle.grid_for_count(colors.len());
 
+    // Everything downstream — the answer reveal, the replay, the hit test —
+    // measures squares by this.
+    puzzle.shape_size = grid.cell_size;
+
+    let shape = shapes::Rectangle {
+        extents: Vec2::new(grid.cell_size, grid.cell_size),
+        origin: shapes::RectangleOrigin::BottomLeft,
+    };
+
+    let mut z = 0.0;
+    for (index, color, is_correct_color) in colors {
+        let position = grid.cell_position(index);
+
+        commands.spawn((
+            ShapeBundle {
+                path: GeometryBuilder::build_as(&shape),
+                transform: Transform::from_xyz(position.x, position.y, z),
+                ..default()
+            },
+            Fill::color(color),
+            PuzzleColor {
+                index,
+                is_correct_color,
+                x: position.x,
+                y: position.y,
+                color,
+                size: grid.cell_size,
+            },
+            PuzzleColorGame {},
+        ));
+
+        z += 0.1;
+    }
 }
 
 pub fn start_puzzle_level(
