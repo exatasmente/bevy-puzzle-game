@@ -26,6 +26,7 @@ impl Plugin for GameHistoryMenuPlugin {
                     interact_with_end_run_button,
                     interact_with_pagination_button,
                     relayout_game_history_menu,
+                    interact_with_sound_toggle,
                 )
                     .in_set(OnUpdate(AppState::History)),
             )

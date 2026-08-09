@@ -37,9 +37,7 @@ pub fn reset_background(
         return;
     };
 
-    transition.reset();
-    transition.set_start_color(theme::BACKGROUND);
-    transition.set_end_color(theme::BACKGROUND);
+    transition.set_solid(theme::BACKGROUND);
     camera.clear_color = ClearColorConfig::Custom(theme::BACKGROUND);
 }
 

@@ -1,3 +1,4 @@
+use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy_prototype_lyon::prelude::*;
 use bevy::core_pipeline::clear_color::ClearColorConfig;
@@ -11,10 +12,24 @@ use crate::wfc::Tile;
 #[derive(Component)]
 pub struct LastClick;
 
+/// Everything a pick announces, in one parameter.
+///
+/// Grouped because Bevy 0.10 stops at sixteen system parameters and
+/// `player_interaction` had reached seventeen. The bundle is also the honest
+/// shape of the thing: these four events are always sent together, as one
+/// answer to one tap.
+#[derive(SystemParam)]
+pub struct PickEvents<'w> {
+    start_level: EventWriter<'w, StartLevelEvent>,
+    last_interaction: EventWriter<'w, LastInteractionEvent>,
+    animation: EventWriter<'w, InteractionAnimationEvent>,
+    banner: EventWriter<'w, BannerEvent>,
+}
+
 pub fn player_interaction(
     mut commands: Commands,
     windows: Query<&Window>,
-    camera_q: Query<(&Camera, &GlobalTransform, &BackgroundTranstion)>,
+    camera_q: Query<(&Camera, &GlobalTransform)>,
     event_click  : Res<Input<MouseButton>>,
     touches: Res<Touches>,
     mut object_query: Query<(&Transform, &PuzzleColor, &mut Fill), With<PuzzleColor>>,
@@ -23,15 +38,13 @@ pub fn player_interaction(
     mut game_timer: ResMut<GameTimer>,
     mut pending_level_start: ResMut<PendingLevelStart>,
     memory_phase: Res<MemoryPhase>,
-    mut start_level_event_writer: EventWriter<StartLevelEvent>,
-    mut last_interraction_event_writer: EventWriter<LastInteractionEvent>,
-    mut interaction_animation_event_writer: EventWriter<InteractionAnimationEvent>,
-    mut banner_event_writer: EventWriter<BannerEvent>,
+    round_intro: Res<RoundIntro>,
+    mut events: PickEvents,
     last_click_query: Query<Entity, With<LastClick>>,
 ) {
 
     let window = windows.single();
-    let (camera, camera_transform, background_transtion) = camera_q.single();
+    let (camera, camera_transform) = camera_q.single();
 
     // Tapping a HUD button used to also register as a puzzle pick, which now
     // means pausing the game would break the player's streak. Ignore world
@@ -54,7 +67,16 @@ pub fn player_interaction(
         return;
     }
 
-    if !background_transtion.is_in_transition() && (event_click.just_released(MouseButton::Left) || touches.any_just_pressed()) {
+    // The board being dealt is not yet the board on screen.
+    if round_intro.is_locked() {
+        return;
+    }
+
+    // Note what is *not* here: the background sweep no longer gates input. The
+    // sweep is a second or so of the ground walking the round's colors, and a
+    // player who spots the answer melt away should be able to say so at once
+    // rather than wait it out.
+    if event_click.just_released(MouseButton::Left) || touches.any_just_pressed() {
         // Bevy 0.10's `viewport_to_world_2d` maps its argument straight to NDC
         // without flipping y, so it wants a position whose origin is the
         // *bottom* left — which is what `cursor_position` returns. Touches are
@@ -110,7 +132,7 @@ pub fn player_interaction(
             leveled_up = puzzle.increase_score(&mut game_timer);
         }
 
-        interaction_animation_event_writer.send(InteractionAnimationEvent {
+        events.animation.send(InteractionAnimationEvent {
             position: world_position,
             scored,
             bonus_seconds,
@@ -120,13 +142,13 @@ pub fn player_interaction(
         });
 
         if leveled_up {
-            banner_event_writer.send(BannerEvent::large(
+            events.banner.send(BannerEvent::large(
                 format!("NIVEL {}", puzzle.level()),
                 theme::ACCENT,
             ));
         }
 
-        last_interraction_event_writer.send(LastInteractionEvent::new(
+        events.last_interaction.send(LastInteractionEvent::new(
             world_position,
             puzzle.get_correct_color_index(),
             colors,
@@ -135,10 +157,10 @@ pub fn player_interaction(
 
         if scored {
             // Keep the momentum: a correct pick moves straight on.
-            start_level_event_writer.send(StartLevelEvent);
+            events.start_level.send(StartLevelEvent);
         } else {
             // Hold the board so the reveal has something to point at.
-            pending_level_start.hold();
+            pending_level_start.hold(puzzle.game_mode.hold_seconds());
 
             // A blank board has nothing to learn from. Put the colors back for
             // the length of the hold, so a missed Memory round still shows the
@@ -272,6 +294,11 @@ pub fn hide_memory_board(
     }
 }
 
+/// Advances the short lock that covers a board being replaced.
+pub fn tick_round_intro(time: Res<Time>, mut round_intro: ResMut<RoundIntro>) {
+    round_intro.tick(time.delta());
+}
+
 /// Starts the next round once a post-miss hold expires.
 pub fn advance_pending_level(
     time: Res<Time>,
@@ -314,11 +341,8 @@ pub fn render_game_history(
     let (mut camera, mut background_transition) = camera_query.single_mut();
 
     // A replay is read, not played, so it sits on the plain app background
-    // rather than reproducing the round's tint.
-    background_transition.reset();
-    background_transition.set_start_color(theme::BACKGROUND);
-    background_transition.set_end_color(theme::BACKGROUND);
-
+    // rather than reproducing the round's sweep.
+    background_transition.set_solid(theme::BACKGROUND);
     camera.clear_color = ClearColorConfig::Custom(theme::BACKGROUND);
 
     let mut z = 0.0;
@@ -406,7 +430,6 @@ pub fn render_game_history(
 pub fn store_last_interaction_state(
     mut last_interaction_events: EventReader<LastInteractionEvent>,
     mut game_history: ResMut<GameHistory>,
-    mut banner_event_writer: EventWriter<BannerEvent>,
 ) {
     let level_history =last_interaction_events.iter().next();
 
@@ -416,14 +439,10 @@ pub fn store_last_interaction_state(
 
     let event = level_history.unwrap();
 
+    // No banner here any more. The streak still counts, and the HUD still shows
+    // it, but a caption thrown across the board interrupts exactly the thing the
+    // player is doing — reading a field of near-identical colors.
     game_history.add_level(event.level_history());
-
-    // Streaks are the cheapest motivation in the game: the player builds
-    // something they then don't want to lose. Call out the milestones so the
-    // thing they stand to lose is salient while they still have it.
-    if let Some(label) = streak_milestone_label(game_history.current_streak()) {
-        banner_event_writer.send(BannerEvent::new(label, theme::SUCCESS));
-    }
 }
 
 
@@ -463,10 +482,17 @@ pub fn tick_game_timer(
     mut game_timer: ResMut<GameTimer>,
     mut game_history: ResMut<GameHistory>,
     puzzle: Res<ColorPuzzle>,
+    pending_level_start: Res<PendingLevelStart>,
     mut app_state_next_state: ResMut<NextState<crate::AppState>>,
     time : Res<Time>,
 ) {
     if !puzzle.game_mode.is_timed() {
+        return;
+    }
+
+    // The beat that lets a miss teach something is not also a penalty: the
+    // clock stops while the answer is being shown.
+    if pending_level_start.is_holding() {
         return;
     }
 
@@ -486,12 +512,15 @@ pub fn spawn_objects(
     mut camera_query: Query<(&mut Camera2d, &mut BackgroundTranstion), With<Camera>>,
     mut last_click_query: Query<Entity, With<LastClick>>,
     mut memory_phase: ResMut<MemoryPhase>,
+    mut round_intro: ResMut<RoundIntro>,
     mut start_level_events: EventReader<StartLevelEvent>,
 ) {
 
     if start_level_events.iter().next().is_none() {
         return;
     }
+
+    round_intro.arm();
 
     // Recursive: a mosaic cell owns the nodes its piece is drawn from.
     for entity in object_query.iter_mut() {
@@ -507,16 +536,22 @@ pub fn spawn_objects(
 
     let (mut camera, mut background_transition) = camera_query.single_mut();
 
-    // The ground travels from the last round's color to this one's, and lands
-    // on the answer's color — which is what makes the answer invisible.
-    background_transition.reset();
-    background_transition.set_end_color(puzzle.background_color());
-    background_transition.set_start_color(previous_background);
-    background_transition.set_time(puzzle.transition_seconds);
+    // The ground sweeps every color on the board and lands on the answer's.
+    // Each group melts into the ground as the sweep passes its color; the
+    // answer melts last and stays gone. That is the information the player
+    // needs to tell it from the cells that were empty all along.
+    background_transition.sweep(
+        previous_background,
+        puzzle.sweep(),
+        puzzle.transition_seconds,
+    );
     camera.clear_color = ClearColorConfig::Custom(previous_background);
 
     if puzzle.game_mode.hides_colors() {
-        memory_phase.begin(puzzle.preview_seconds());
+        // The sweep is part of showing the board, so the preview starts after
+        // it. Counting the sweep as preview would make a late level's 0.7s
+        // preview almost entirely ramp.
+        memory_phase.begin(puzzle.preview_seconds() + puzzle.transition_seconds);
     } else {
         memory_phase.clear();
     }
@@ -608,12 +643,14 @@ pub fn start_puzzle_level(
     mut game_history: ResMut<GameHistory>,
     mut pending_level_start: ResMut<PendingLevelStart>,
     mut memory_phase: ResMut<MemoryPhase>,
+    mut round_intro: ResMut<RoundIntro>,
     window_query: Query<&Window, With<Window>>
 ) {
     // A hold left over from a miss in a previous run would swallow the first
     // pick of this one.
     pending_level_start.clear();
     memory_phase.clear();
+    round_intro.clear();
 
     let window = window_query.single();
     puzzle.set_window_size(window.width(), window.height());
@@ -690,10 +727,13 @@ pub fn despaw_objects(
     mut puzzle: ResMut<ColorPuzzle>,
     mut pending_level_start: ResMut<PendingLevelStart>,
     mut memory_phase: ResMut<MemoryPhase>,
+    mut round_intro: ResMut<RoundIntro>,
 ) {
 
     pending_level_start.clear();
     memory_phase.clear();
+    round_intro.clear();
+    round_intro.clear();
 
     for entity in object_query.iter_mut() {
         commands.entity(entity).despawn_recursive();

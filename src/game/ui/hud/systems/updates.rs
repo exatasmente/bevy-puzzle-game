@@ -132,10 +132,12 @@ pub fn update_level_progress(
     }
 
     if let Ok(mut text) = level_query.get_single_mut() {
-        text.sections[0].value = match puzzle.points_to_next_level() {
-            // Naming the remaining distance is what turns a bar into a goal.
-            Some(points) => format!("NIVEL {}   FALTAM {}", puzzle.level(), points),
-            None => format!("NIVEL {}   MAXIMO", puzzle.level()),
-        };
+        // Naming the remaining distance is what turns a bar into a goal. There
+        // is no last level any more, so there is no "MAXIMO" case to fall to.
+        text.sections[0].value = format!(
+            "NIVEL {}   FALTAM {}",
+            puzzle.level(),
+            puzzle.points_to_next_level()
+        );
     }
 }

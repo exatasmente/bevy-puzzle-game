@@ -23,3 +23,7 @@ pub struct GameHistoryMenu;
 
 #[derive(Component)]
 pub struct PaginationContainer;
+
+/// Silences the game, or lets it speak again.
+#[derive(Component)]
+pub struct SoundToggleButton;

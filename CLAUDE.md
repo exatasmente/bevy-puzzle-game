@@ -5,25 +5,30 @@ Guidance for AI assistants working in this repository.
 ## What this project is
 
 A color-discrimination puzzle game ("Color Puzzle") built with **Bevy 0.10** in Rust.
-The board is an uneven honeycomb — convex polygons of five to seven sides, tessellated
-by Voronoi and separated by thin gaps. Every piece has its own color, and one of them
-is painted exactly the background color, so it is invisible. The player has to find
-it. It runs natively and in the browser via
-WebAssembly (a prebuilt WASM bundle is committed under `docs/` and served by GitHub
-Pages).
+The board is a honeycomb of **congruent regular hexagons**. Some cells are empty and
+simply show the ground; the filled ones are grouped into blobs of colour, and the
+board reads as a mosaic. One filled cell wears its group's colour moved by the level's
+delta — it is the only cell on the board wearing exactly that colour, and it is the
+answer. It runs natively and in the browser via WebAssembly (a prebuilt WASM bundle is
+committed under `docs/` and served by GitHub Pages).
 
-**The hidden piece and the irregular cut are one design, and neither survives without
-the other.** A version of this game laid the pieces out on a regular grid, and it was
-trivial: the hidden piece became an empty cell at a known address, which the visual
-system finds pre-attentively without comparing any colors, and the difficulty dial
-stopped mattering. The irregular cut removes the address. The pieces still *tile* the
-play area rather than floating in it, because a hole in a mass of interlocking pieces
-is bounded by its neighbours' edges and can be read from them — pieces scattered over
-empty space would leave nothing to infer from and the round would be a lottery. See
-`src/board.rs`.
+**The ground sweeps.** At the start of every round the background travels through all
+of the round's colours over one second and stops on the answer's. Each group vanishes
+for an instant as the ground passes its colour; the answer is the one that vanishes at
+the end and *stays* gone. That gives the round two ways to be solved, and they suit
+different players: spot the cell whose colour does not match the blob it sits in, or
+watch the sweep and remember which hole arrived last. Do not shorten the sweep or make
+it instant — it is the round's second channel of information, not a transition effect.
 
-So: do not put the pieces on a grid, and do not make the answer visible. `Mosaic` is
-the one mode that does both, because its puzzle is a pattern rather than a color.
+**The empty cells are deliberate, and they used to be a bug.** Under the old Voronoi
+cut a dropped cell left a second background-coloured hole indistinguishable from the
+answer, and the layout worked hard to avoid one. Now holes are the point: what
+separates the answer from them is what the sweep showed. This is also why the lattice
+could go regular after a long stretch of insisting it must not — the answer is no
+longer "the cell that is missing", so a known address gives nothing away.
+
+`Mosaic` is the odd mode out: its puzzle is a pattern rather than a colour, so it still
+uses a plain grid, a static ground and no sweep.
 
 The crate is still named `bevy-tetris` in `Cargo.toml` (leftover from the template
 this project started from) — the game itself has nothing to do with Tetris. Don't
@@ -41,7 +46,7 @@ cargo run            # run natively (debug; deps are built at opt-level 3, our c
 cargo build          # build
 cargo check          # fast type-check — prefer this for verifying edits
 cargo build --release
-cargo test           # runs, but there are currently no tests in the repo
+cargo test           # generator invariants (board, mosaic_pattern, wfc, the difficulty curve)
 ```
 
 WASM: `.cargo/config.toml` sets `runner = "wasm-server-runner"` for
@@ -136,13 +141,15 @@ Debug keyboard shortcuts in `src/systems.rs`: `G` → Game, `M` → MainMenu,
 src/
   main.rs                     App setup, AppState, PIXELS_PER_METER/RESOLUTION consts
   theme.rs                    Design tokens: palette, type scale, spacing, button states
-  board.rs                    Voronoi honeycomb: convex pieces, uneven gaps (has tests)
+  board.rs                    Regular pointy-top hex lattice, uniform gaps (has tests)
+  mosaic_pattern.rs           Which cells are empty and which colour blob each joins (has tests)
   oklab.rs                    Perceptual color space; the unit the difficulty is set in
+  audio.rs                    GameAudioPlugin — pick/level sounds off existing events, Muted
   wfc.rs                      Wave function collapse; generates the Mosaic board (has tests)
   layout.rs                   RelayoutEvent: screens rebuild when the window resizes
   feedback.rs                 FeedbackPlugin — pop, floating text, screen shake, banners, reveal
   storage.rs                  localStorage on wasm, no-op on native
-  systems.rs                  spawn_camera, BackgroundTranstion component, debug hotkeys, exit_game
+  systems.rs                  spawn_camera, BackgroundTranstion (the sweep), debug hotkeys, exit_game
   events.rs                   TransitionToStateEvent, InteractionAnimationEvent
   pagination.rs               Pagination resource (page math + the container Entity)
   interaction_animation.rs    Per-pick world feedback: success ring, miss cross, answer reveal
@@ -156,8 +163,9 @@ src/
       hud/                    Top bar: score, streak, timer, level bar, pause
       game_history_menu/      Pause screen: paginated round review, continue, end run
       game_over_menu/         End-of-run summary + "fim de jogo" interstitial
-assets/                       digital7mono.ttf (the only asset actually loaded), buttons.png
+assets/                       digital7mono.ttf, sfx/*.wav, buttons.png (unused)
 docs/                         Prebuilt WASM bundle for GitHub Pages
+tools/make_sounds.py          Regenerates assets/sfx/ — pure stdlib, no dependencies
 ```
 
 Each UI feature follows the same four-part convention — copy it for new UI:
@@ -194,25 +202,37 @@ canvas a frame or two after the main menu has already been built at Bevy's defau
   dimensions. `background_color()` returns the answer's own color, which is what makes
   it invisible; in `Mosaic` it returns a dimmed ground instead, because that mode's
   pieces all have to be seen. `is_correct_color(index)` compares *indices*.
-- **Every piece has its own color.** The distractors are jittered inside a cluster of
-  radius `CLUSTER` (0.22) times the level's delta, so the widest gap inside the group
-  is 0.44 of the delta while the answer sits at least 0.78 from all of them — one
-  defensible answer, and no two pieces painted the same. Repeats used to read as a
-  rule of their own.
-- **Difficulty** is a 1-based level derived from the score via the `LEVEL_START_SCORES`
-  table (`level_for_score`, `score_for_level`, `progress_to_next_level`). Three dials
-  move with it: `color_count_for_level` (6 → 14 pieces), `color_delta_for_level`
-  (0.080 → 0.018) and, in `Memory`, `preview_seconds_for_level` (1.7s → 0.7s). The
-  delta is how far the *visible* pieces sit from the ground: the closer they get, the
-  harder the hole is to pick out of them.
-- **Color generation** lives in `generate_colors()` and is written in **Oklab**
-  (`src/oklab.rs`), not sRGB. A round is one base color plus one odd color exactly
-  `color_delta_for_level` away from it in a random, mostly-chromatic direction. The
-  unit matters: 0.05 on an sRGB channel is glaring in a grey and invisible in a dark
-  blue, so the old per-channel variation made a level mean something different every
+- **Colour is a small palette, not a colour per piece.** `palette_size_for_level` gives
+  `K` (4 → 8) groups, and every filled cell wears its group's colour exactly. `K` is
+  small on purpose: the sweep visits *colours*, and at 16 columns the board holds ~530
+  cells — 530 stops in one second is 2ms each and shows nothing, while `K` stops make a
+  whole blob blink at a time, which is what the eye can actually read.
+- **The answer is the only cell alone in its colour.** If it shared a colour with its
+  group, the ground settling would erase the whole group and the round would have
+  several defensible answers — the same fairness bug the `Mosaic` tests once caught.
+  `answer_color` therefore keeps it clear of every *other* group by `(delta*2).max(0.03)`
+  while sitting exactly `delta` from its own.
+- **Difficulty is a formula, and it never ends.** `score_for_level(L) = 2 + 3L(L−1)/2`
+  reproduces the nine-entry table it replaced (there is a test); `level_for_score`
+  inverts it in closed form. `score_for_level` works in `u64` with `saturating_*`
+  because `usize` is 32 bits on wasm32 and the direct form overflows near level 53 500.
+  Four dials move with the level, all monotone, none with a ceiling in the level:
+  `columns_for_level` (4 → 16), `empty_share_for_level` (.20 → .50),
+  `palette_size_for_level` (4 → 8) and `color_delta_for_level` (0.050 → `MIN_COLOR_DELTA`
+  = 0.010). Below about 0.008 in Oklab the discrimination is a coin flip, so the
+  difficulty *plateaus* rather than rising forever — the levels keep counting, the
+  challenge tends to a limit. In `Memory`, `preview_seconds_for_level` (1.7s → 0.7s)
+  moves too.
+- **Colour generation** lives in `generate_colors()` and is written in **Oklab**
+  (`src/oklab.rs`), not sRGB. The unit matters: 0.05 on an sRGB channel is glaring in a
+  grey and invisible in a dark blue, so a level would mean something different every
   round. `oklab::to_color` returns `None` outside the sRGB gamut and the generator
-  retries rather than clamping — a clamped color would be closer to the base than the
-  level claims, and so easier.
+  retries rather than clamping — a clamped colour would be closer to the base than the
+  level claims, and so easier. **`palette()` walks an arc of hue rather than nudging in
+  random directions**: the separation the round needs is a large distance in Oklab,
+  random candidates that far out mostly fall outside the gamut, the retry budget runs
+  out and every group lands on the fallback. That produced a board in one flat blue.
+  An arc is separated by construction. `every_colour_group_is_visibly_its_own` pins it.
 - **`GameMode`** — `Infinite` (no timer), `AgainstTheClock` (60s), `TimeTrial`
   (30s, +3s per correct pick), `Memory` (no timer; the board is shown, then blanks).
   `setup(&mode)` reconfigures `ColorPuzzle`; `as_str()`/`description()` return the
@@ -259,26 +279,31 @@ canvas a frame or two after the main menu has already been built at Bevy's defau
   `LevelColor`s, which was correct, whether it scored) plus aggregate stats
   (`levels_played`, `total_score`, `max_streak`, `total_time`). Drives both the
   history menu and the level replay.
-- **`PuzzleColor`** (Component) — one per rendered square, carrying its position and
-  its `size`. Size is stored per square, not read from `ColorPuzzle::shape_size`, so a
-  replayed round is drawn and hit-tested at the size it was played at.
-  `PuzzleColorGame` is the broad marker used by `despaw_objects` (sic) to clear the
-  board on `OnExit(Game)`.
-- **`board::layout`** — the color modes' board. Seeds on a jittered lattice with
-  **every other row offset by half a step**, then each piece is the region closest to
-  its seed (Voronoi, built by clipping the play area with the perpendicular
-  bisectors), shrunk by a random amount to open the gaps. Three details are load
-  bearing, and dropping any of them puts the grid back: the stagger (seeds on a square
-  grid meet four neighbours and produce quadrilaterals), a ring of **ghost seeds
-  outside the frame** so edge cells are bounded by a bisector rather than by the frame,
-  and two rounds of **Lloyd relaxation** so no cell comes out too thin to keep. That
-  last one is not cosmetic — a dropped cell leaves a second background-colored hole,
-  and the player has no way to tell it from the answer. Relaxation took the drop rate
-  from 6.5% to 0.3%.
-  Pieces thinner than `MIN_INRADIUS` are dropped, so **the round is sized to the
-  pieces that came back, not to the count that was asked for** — a color with no piece
-  to live on could be the answer. The result is stored with the round in
-  `current_slots`, so the replay redraws the board that was played.
+- **`PuzzleColor`** (Component) — one per rendered piece, carrying its centre and its
+  `corners` relative to that centre. The outline is stored per piece rather than
+  recomputed from the current level, so a replayed round is drawn and hit-tested exactly
+  as it was played. `PuzzleColorGame` is the broad marker used by `despaw_objects` (sic)
+  to clear the board on `OnExit(Game)`.
+- **`board::layout(min, max, columns)`** — the colour modes' board: an analytic
+  *pointy-top* hex lattice. Circumradius `R` comes from the column count and the width
+  (`√3·R` per column); the row count is whatever fits the height at `1.5·R` spacing, so
+  **rows and columns cannot be chosen independently** — with congruent regular hexagons
+  the aspect ratio of the screen decides. Odd rows hold `columns−1` cells and shift by
+  half a width, which is what makes them interlock. The gap is a **uniform scale about
+  the centre** (`R_draw = R − gap/√3`), not a shrink, because on a regular hexagon that
+  is the only thing giving an identical vent on all six sides. Edge cells stay **whole**
+  and the leftover is centred — clipping them to the frame would return pieces of
+  different sizes and destroy the congruence the eye compares against. `layout` returns
+  each piece's `(column, row)`, which is how `mosaic_pattern` knows who touches whom;
+  `neighbours` gives the six offsets in odd-r offset coordinates. O(n), no rejection.
+  **At 16 columns on a 390px phone a hexagon is ~22px, under the 48px touch guideline.**
+  That is a deliberate trade — the 48px floor still applies to UI buttons.
+- **`mosaic_pattern::generate`** — decides, per cell, empty or which colour group.
+  Empties are **grown in veins from seeds**, not sprinkled: scattered empties read as
+  noise, connected ones read as a mosaic. Groups come from a **multi-source BFS** over
+  the lattice, which makes every group connected by construction. `choose_answer`
+  prefers a cell surrounded by its own group and requires that group to hold at least
+  two cells, so the answer always has near-twins to hide among.
 - **Pieces are convex polygons, and everything downstream knows it.** `PuzzleColor`
   carries `corners` relative to the piece's centre — which is its `Transform`, unlike
   the old squares, which were spawned from their bottom-left corner. Hit testing is
@@ -304,7 +329,10 @@ and breaks the player's streak.
 `src/feedback.rs` holds the reusable primitives — `PopAnim` (scale punch, works on UI
 nodes because Bevy's layout owns only `Transform::translation`), `spawn_floating_text`,
 `ScreenShakeEvent` / `ScreenShake` (on the camera, next to `BackgroundTranstion`),
-`BannerEvent` for level ups and streak milestones, and `RevealIn` for staggered text.
+`BannerEvent` for level ups, and `RevealIn` for staggered text. Streak *messages* were
+removed on purpose — the HUD's "SEQ" counter and the summary's "MAIOR SEQUENCIA" stay,
+because those are numbers rather than interruptions. `BannerEvent` is now only ever a
+level up, which is why `audio.rs` can play the level sound off it without filtering.
 `src/interaction_animation.rs` consumes `InteractionAnimationEvent` and renders the
 per-pick response: green ring and "+1" on a hit, red cross plus shake and a blinking
 outline over the correct square on a miss.
@@ -313,10 +341,10 @@ The event carries `scored`, `bonus_seconds` and `correct_position` precisely so 
 miss can look different — if you add a new outcome, extend the event rather than
 inferring the result downstream.
 
-Rendering uses **bevy_prototype_lyon** `ShapeBundle` + `Fill`, not sprites. Squares
-use `RectangleOrigin::BottomLeft`, so a square's `Transform` is its bottom-left
-corner — `mouse_hover` in `systems.rs` depends on this. Depth is handled by
-incrementing `z` by 0.1 per square.
+Rendering uses **bevy_prototype_lyon** `ShapeBundle` + `Fill`, not sprites. A piece is a
+polygon whose `Transform` is its *centre* and whose `corners` are relative to it — not
+the bottom-left origin the old squares used. Depth is handled by incrementing `z` by 0.1
+per piece.
 
 **Pointer coordinates.** Bevy 0.10's `viewport_to_world_2d` maps its argument straight
 to NDC without flipping y, so it wants a bottom-left origin — which is what
@@ -325,12 +353,23 @@ through in winit's top-left convention, so `player_interaction` flips those befo
 converting. Getting this wrong mirrors every pick vertically.
 
 The background is the camera clear color, and in the color modes it *is* the answer.
-`BackgroundTranstion` (`src/systems.rs`, spawned on the camera entity) lerps from the
-previous round's color to the current one over `transition_seconds`; that travel
-between the colors the rounds pick is part of the game's feel. `background_transition`
-applies it each
-frame. `player_interaction` **ignores input while a transition is running** — if new
-input handling seems dead, check `is_in_transition()` first.
+`BackgroundTranstion` (`src/systems.rs`, spawned on the camera entity) holds a **path**
+of colors, not a from/to pair: `sweep(from, stops, seconds)` walks it with equal time
+per stop and `get_current_color` lerps piecewise along it. `ColorPuzzle::sweep()` builds
+the path — the round's palette shuffled, with the answer's colour removed from the body
+and appended as the final stop, so the ground never lands on it early. The pieces are
+spawned in their final colors and never animated; a group vanishing is simply the
+consequence of the ground reaching its colour.
+
+**Input is accepted from frame 0.** Removing the old dead second was the point. What
+`is_in_transition()` also did, and what had to be replaced rather than deleted, is stop
+a double score: `spawn_objects` despawns the old board through `Commands`, which apply
+at the end of the stage, so for one frame `player_interaction` still sees last round's
+entities. `RoundIntro` (`LOCK_SECONDS` = 0.12, shorter than any human double-tap) is
+armed at spawn and covers exactly that. The post-miss pause is `GameMode::hold_seconds()`
+— 0.45s timed, 0.7s untimed — and `tick_game_timer` returns early while
+`PendingLevelStart::is_holding()`, because otherwise a timed mode charged the player
+twice for one mistake.
 
 ## Conventions and gotchas
 
@@ -365,8 +404,9 @@ input handling seems dead, check `is_in_transition()` first.
   declared in `Cargo.toml` but unused in `src/`. They still cost build time.
   `web-sys` is declared under a `cfg(target_arch = "wasm32")` target table and is
   used only by `src/storage.rs`.
-- The only tests are in `src/wfc.rs`, and they cover generator invariants rather than
-  Bevy wiring. That split is deliberate: the generator is pure and its guarantees are
+- Tests live in `src/wfc.rs`, `src/board.rs`, `src/mosaic_pattern.rs` and
+  `src/game/puzzle/components.rs`, and they cover generator invariants rather than Bevy
+  wiring. That split is deliberate: the generators are pure and their guarantees *are*
   the game's fairness, while everything else needs a running app to mean anything.
 - No `rustfmt.toml`/`clippy.toml`, and formatting in the tree is inconsistent (mixed
   indentation, trailing whitespace). Running `cargo fmt` across the repo would produce
@@ -381,9 +421,18 @@ input handling seems dead, check `is_in_transition()` first.
   in `CoreSet::PostUpdate`. There is no way to switch the a11y systems off — `bevy_ui`
   depends on `bevy_a11y` unconditionally and adds the plugin itself. Despawning on
   `OnExit` is fine: that runs in `StateTransition`, a schedule earlier in the frame.
-- `AudioPlugin` is disabled in `main.rs`. The game has no sound, and leaving it on
-  asked the browser for an `AudioContext` before any user gesture (which Chrome
-  refuses and logs) and probed for a device on native.
+- **Sound uses Bevy 0.10's audio API**, which is `Res<Audio>` +
+  `audio.play_with_settings(handle, PlaybackSettings::ONCE.with_volume(..))`.
+  `AudioBundle`, which every current example and every LLM reaches for, arrived in 0.12
+  and does not exist here. `Cargo.toml` enables the `wav` feature — the default set is
+  Ogg only. `AudioPlugin` was disabled for a while because Chrome creates the
+  `AudioContext` suspended and logs about it before any user gesture; it is back on and
+  that warning is back with it. The context resumes on the first tap, which in this
+  game is the tap that starts a run, so nothing is actually silent. Bevy 0.10 builds
+  the context at startup and there is no way to have both.
+- Sounds live in `assets/sfx/` and are **synthesised** by `tools/make_sounds.py` (pure
+  stdlib, no dependencies) so the repo owns them outright — nothing to re-source, no
+  licence to track. Regenerate rather than hand-editing the WAVs.
 
 ### Visual language
 
