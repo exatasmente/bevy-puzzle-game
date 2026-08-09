@@ -425,11 +425,19 @@ twice for one mistake.
   `audio.play_with_settings(handle, PlaybackSettings::ONCE.with_volume(..))`.
   `AudioBundle`, which every current example and every LLM reaches for, arrived in 0.12
   and does not exist here. `Cargo.toml` enables the `wav` feature — the default set is
-  Ogg only. `AudioPlugin` was disabled for a while because Chrome creates the
-  `AudioContext` suspended and logs about it before any user gesture; it is back on and
-  that warning is back with it. The context resumes on the first tap, which in this
-  game is the tap that starts a run, so nothing is actually silent. Bevy 0.10 builds
-  the context at startup and there is no way to have both.
+  Ogg only.
+- **The browser needs the shim in `docs/index.html` to make any sound at all.** Chrome
+  builds an `AudioContext` created before a user gesture in the `suspended` state and
+  leaves it there until something calls `resume()` from inside a gesture handler. Bevy
+  0.10 builds its context at startup, from cpal, and never calls `resume`; nothing in
+  the Rust code can reach it. So the page wraps the `AudioContext` constructor before
+  loading the module, keeps the instances, and resumes them on the first input. Two
+  details are load bearing: the script must come **before** the `import init` module,
+  because the wrap has to be in place when Bevy constructs the context; and the
+  listeners are on `window` in the **capture** phase, because winit binds the canvas and
+  stops the event there, so a bubbling listener never runs. Without the capture flag the
+  context stays suspended through every tap — measured, not assumed. Chrome still logs
+  its autoplay warning at startup; that part is unavoidable in 0.10.
 - Sounds live in `assets/sfx/` and are **synthesised** by `tools/make_sounds.py` (pure
   stdlib, no dependencies) so the repo owns them outright — nothing to re-source, no
   licence to track. Regenerate rather than hand-editing the WAVs.

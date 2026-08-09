@@ -21,6 +21,15 @@ const CRITICAL_SECONDS: f32 = 5.0;
 /// movement and reads it as a gain.
 const SCORE_COUNT_SPEED: f32 = 14.0;
 
+/// However far the counter has to travel, it arrives within this long.
+///
+/// A fixed rate is right for the +1 it was written for and wrong for anything
+/// larger. Resuming a saved run sets the score to wherever the player left off,
+/// and at fourteen a second a run continued at 1307 spent a minute and a half
+/// displaying a number that was not the score — while the level and the points
+/// to the next level, which do not animate, showed the truth beside it.
+const MAX_COUNT_SECONDS: f32 = 0.4;
+
 pub fn update_score_text(
     mut commands: Commands,
     puzzle: Res<ColorPuzzle>,
@@ -48,7 +57,9 @@ pub fn update_score_text(
     // Count up toward the real score.
     let target_f32 = target as f32;
     if (*displayed - target_f32).abs() > 0.01 {
-        let step = SCORE_COUNT_SPEED * time.delta_seconds();
+        let remaining = target_f32 - *displayed;
+        let rate = SCORE_COUNT_SPEED.max(remaining / MAX_COUNT_SECONDS);
+        let step = rate * time.delta_seconds();
         *displayed = if *displayed < target_f32 {
             (*displayed + step.max(0.2)).min(target_f32)
         } else {

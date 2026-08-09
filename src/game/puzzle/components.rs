@@ -1378,13 +1378,22 @@ mod tests {
                 for (i, (a, _)) in palette.iter().enumerate() {
                     for (j, (b, _)) in palette.iter().enumerate().skip(i + 1) {
                         let distance = ColorPuzzle::distance(*a, *b);
-                        // Comfortably more than the answer's delta: the answer
-                        // has to be the only cell wearing its colour, and a
-                        // group sitting within a delta of it would vanish with
-                        // it when the ground settles.
+                        // The bar is a floor on the construction, not on
+                        // fairness. The arc's tightest case is eight groups at
+                        // the chroma clamp, where neighbouring hues are about
+                        // 25 degrees apart and the chord comes to roughly 0.02.
+                        //
+                        // Keeping the answer clear of the *other* groups is not
+                        // this test's job and could not be a property of the
+                        // palette anyway: `answer_color` retries directions
+                        // until it finds one that clears them, and
+                        // `the_answer_is_alone_in_its_colour` checks that it
+                        // does. What this catches is the failure that actually
+                        // happened — every group identical, distance zero.
                         assert!(
-                            distance > delta * 3.0,
-                            "level {level}: groups {i} and {j} only {distance} apart                              (delta {delta})"
+                            distance > 0.02,
+                            "level {level}: groups {i} and {j} only {distance} apart \
+                             (delta {delta})"
                         );
                     }
                 }
