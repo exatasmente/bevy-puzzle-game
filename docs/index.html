@@ -25,6 +25,57 @@
   <body>
     <canvas id="canvas"></canvas>
   </body>
+  <!--
+    Wake the audio up on the first tap.
+
+    Chrome will not let a page start an AudioContext before the user has
+    interacted with it: one built earlier comes out `suspended` and stays that
+    way until something calls `resume()` inside a gesture. Bevy 0.10 builds its
+    context at startup, from cpal, and never calls resume — so without this the
+    game fetches its sounds and plays none of them, silently, with only a
+    console warning to show for it. Measured, not assumed: the context was still
+    `suspended` after two real clicks.
+
+    Nothing in the Rust code can reach that context, so it is caught here
+    instead. This script must run *before* the module below, because it works by
+    wrapping the constructor and Bevy builds its context during `init()`.
+  -->
+  <script>
+    (function () {
+      const contexts = []
+      const wrap = (Base) =>
+        Base &&
+        new Proxy(Base, {
+          construct(target, args) {
+            const context = new target(...args)
+            contexts.push(context)
+            return context
+          },
+        })
+
+      window.AudioContext = wrap(window.AudioContext)
+      window.webkitAudioContext = wrap(window.webkitAudioContext)
+
+      const resume = () => {
+        for (const context of contexts) {
+          if (context.state === 'suspended') context.resume()
+        }
+      }
+
+      // Capture phase, and on `window`: winit binds the canvas and stops the
+      // event there, so a listener waiting for it to bubble never runs. Capture
+      // sees it on the way down instead.
+      //
+      // Every gesture, not just the first: a context can be suspended again by
+      // the browser when the tab is hidden, and the player coming back should
+      // not have to reload to get the sound back.
+      for (const event of ['pointerdown', 'touchstart', 'mousedown', 'keydown']) {
+        window.addEventListener(event, resume, { capture: true })
+      }
+
+      window.__audioShim = { contexts, resume }
+    })()
+  </script>
   <script type="module">
     import init from './puzzle_wasm.js'
     init()

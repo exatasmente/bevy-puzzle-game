@@ -93,12 +93,25 @@ pub fn generate(
     let wanted_empty = ((count as f32 * empty_share.clamp(0.0, 0.7)) as usize)
         .min(count.saturating_sub(groups.max(1) * 2 + 1));
 
-    let empty = grow_empty(count, wanted_empty, &neighbours_of, rng);
+    let mut empty = grow_empty(count, wanted_empty, &neighbours_of, rng);
+    dissolve_slivers(count, &mut empty, &neighbours_of, rng);
 
     let filled: Vec<usize> = (0..count).filter(|index| !empty[*index]).collect();
     let groups = groups.clamp(1, filled.len().max(1));
 
     let assignment = grow_groups(count, &filled, groups, &neighbours_of, rng);
+
+    // More groups than the curve asked for when the veins cut the board into
+    // more regions than there are colours — every region needs a seed of its
+    // own or it is not drawn at all. The palette is built from this number, so
+    // it has to be what was actually used rather than what was requested.
+    let group_count = assignment
+        .iter()
+        .flatten()
+        .copied()
+        .max()
+        .map(|highest| highest + 1)
+        .unwrap_or(0);
 
     // Islands that found no group stayed empty, so the answer has to be chosen
     // from what actually ended up filled.
@@ -109,7 +122,7 @@ pub fn generate(
 
     Pattern {
         groups: assignment,
-        group_count: groups,
+        group_count,
         answer,
     }
 }
@@ -161,6 +174,116 @@ fn grow_empty(
     empty
 }
 
+/// A region below this many cells cannot host a blob, and is dissolved.
+const MIN_REGION: usize = 3;
+
+/// Removes filled regions too small to read as a blob, keeping the number of
+/// empty cells exactly as the level asked for.
+///
+/// A veined board occasionally strands one or two cells on their own, and
+/// because every region gets a seed of its own, a stranded cell comes out in a
+/// colour no other cell wears. That is precisely the description of the answer.
+/// The player looking for the cell whose colour does not match its surroundings
+/// finds it immediately, taps it, and is told they are wrong — for spotting
+/// exactly what the round asked them to spot.
+///
+/// So the slivers are emptied, and an equal number of empty cells touching the
+/// largest region are filled back in to keep the share honest. Filling only next
+/// to an existing region is what stops the repair from stranding something new.
+fn dissolve_slivers(
+    count: usize,
+    empty: &mut [bool],
+    neighbours_of: &impl Fn(usize) -> Vec<usize>,
+    rng: &mut impl Rng,
+) {
+    let filled: Vec<usize> = (0..count).filter(|index| !empty[*index]).collect();
+    let regions = components(count, &filled, neighbours_of);
+
+    // Never dissolve the last region standing, however small the board is.
+    let mut owed = 0;
+    for region in regions.iter().skip(1) {
+        if region.len() >= MIN_REGION {
+            continue;
+        }
+        for cell in region {
+            empty[*cell] = true;
+            owed += 1;
+        }
+    }
+
+    let Some(main) = regions.first() else {
+        return;
+    };
+
+    // Grow the main region back out by as many cells as were taken.
+    let mut edge: Vec<usize> = main
+        .iter()
+        .flat_map(|cell| neighbours_of(*cell))
+        .filter(|cell| empty[*cell])
+        .collect();
+    edge.sort_unstable();
+    edge.dedup();
+
+    while owed > 0 && !edge.is_empty() {
+        let pick = rng.gen_range(0..edge.len());
+        let cell = edge.swap_remove(pick);
+
+        if !empty[cell] {
+            continue;
+        }
+
+        empty[cell] = false;
+        owed -= 1;
+        edge.extend(neighbours_of(cell).into_iter().filter(|next| empty[*next]));
+    }
+}
+
+/// Splits the filled cells into connected regions, largest first.
+///
+/// The empty veins routinely cut the board in two or more, and how the seeds are
+/// spread over those pieces decides whether the board comes out looking like the
+/// level asked for.
+fn components(
+    count: usize,
+    filled: &[usize],
+    neighbours_of: &impl Fn(usize) -> Vec<usize>,
+) -> Vec<Vec<usize>> {
+    let mut is_filled = vec![false; count];
+    for cell in filled {
+        is_filled[*cell] = true;
+    }
+
+    let mut seen = vec![false; count];
+    let mut found: Vec<Vec<usize>> = Vec::new();
+
+    for start in filled {
+        if seen[*start] {
+            continue;
+        }
+
+        let mut region = vec![*start];
+        seen[*start] = true;
+        let mut cursor = 0;
+
+        while cursor < region.len() {
+            let cell = region[cursor];
+            cursor += 1;
+
+            for neighbour in neighbours_of(cell) {
+                if is_filled[neighbour] && !seen[neighbour] {
+                    seen[neighbour] = true;
+                    region.push(neighbour);
+                }
+            }
+        }
+
+        found.push(region);
+    }
+
+    found.sort_by_key(|region| std::cmp::Reverse(region.len()));
+    found
+}
+
 /// Assigns every filled cell to a colour group by multi-source breadth-first
 /// growth from `groups` seeds.
 ///
@@ -168,6 +291,15 @@ fn grow_empty(
 /// ever claimed by a neighbour that already belongs to the group, so there is
 /// always a path home. Assigning by nearest-seed distance instead can strand
 /// cells across an empty vein.
+///
+/// **The seeds are dealt per region, not drawn at random from the whole board.**
+/// Drawn at random, a region the veins had cut off could easily receive no seed
+/// at all, and every cell in it would stay unassigned — which is to say it would
+/// be drawn as more empty ground. That is how a level asking for 20% empty
+/// produced boards that were 46% empty, and at 50% produced boards that were
+/// 82% empty: half the screen bare, the blobs gone, and the answer with nothing
+/// left to hide among. Every region now gets at least one seed, and the rest are
+/// dealt out largest-region-first so the big areas still get most of the colours.
 fn grow_groups(
     count: usize,
     filled: &[usize],
@@ -189,7 +321,41 @@ fn grow_groups(
         is_filled[*cell] = true;
     }
 
-    let seeds: Vec<usize> = filled.iter().copied().choose_multiple(rng, groups);
+    let regions = components(count, filled, neighbours_of);
+
+    // One seed each, then hand out what is left in proportion to size. When
+    // there are more regions than colours the smallest ones share, which is
+    // fine: they are far apart on the screen and read as separate blobs anyway.
+    let mut per_region = vec![1usize; regions.len()];
+    let mut spare = groups.saturating_sub(regions.len());
+    let cells: usize = regions.iter().map(|region| region.len()).sum();
+
+    for (index, region) in regions.iter().enumerate() {
+        if spare == 0 {
+            break;
+        }
+        let share = ((groups * region.len()) / cells.max(1)).saturating_sub(1);
+        let extra = share.min(spare);
+        per_region[index] += extra;
+        spare -= extra;
+    }
+    // Rounding leaves a seed or two over; the biggest region takes them.
+    per_region[0] += spare;
+
+    let mut seeds: Vec<usize> = Vec::with_capacity(groups);
+    for (index, region) in regions.iter().enumerate() {
+        // A region can only host as many blobs as it has cells to spare. Three
+        // seeds in a three-cell region gives three groups of one, which is the
+        // decoy `dissolve_slivers` exists to prevent, rebuilt from the inside.
+        let room = (region.len() / MIN_REGION).max(1);
+        seeds.extend(
+            region
+                .iter()
+                .copied()
+                .choose_multiple(rng, per_region[index].min(room)),
+        );
+    }
+
     let mut frontier: Vec<usize> = Vec::with_capacity(filled.len());
 
     for (group, seed) in seeds.iter().enumerate() {
@@ -245,7 +411,65 @@ fn grow_groups(
         }
     }
 
+    merge_lone_groups(&mut assignment, filled, neighbours_of);
+    compact_groups(&mut assignment);
     assignment
+}
+
+/// Folds any group that came out a single cell into a neighbouring group.
+///
+/// Capping the seeds by region makes this rare rather than impossible: the
+/// growth is breadth-first from all seeds at once, so a seed dropped next to
+/// another can still be walled in before it claims anything. Merging into a
+/// *neighbour* keeps the receiving group connected, which is the invariant the
+/// whole assignment is built around.
+fn merge_lone_groups(
+    assignment: &mut [Option<usize>],
+    filled: &[usize],
+    neighbours_of: &impl Fn(usize) -> Vec<usize>,
+) {
+    loop {
+        let mut population: HashMap<usize, usize> = HashMap::new();
+        for group in assignment.iter().flatten() {
+            *population.entry(*group).or_insert(0) += 1;
+        }
+
+        let Some(&lonely) = filled.iter().find(|cell| {
+            assignment[**cell].map_or(false, |group| population[&group] == 1)
+        }) else {
+            return;
+        };
+
+        let own = assignment[lonely];
+        let Some(host) = neighbours_of(lonely)
+            .into_iter()
+            .find_map(|neighbour| assignment[neighbour].filter(|group| Some(*group) != own))
+        else {
+            // Nothing to join. Better a hole than a colour worn by one cell,
+            // which is what the answer looks like.
+            assignment[lonely] = None;
+            continue;
+        };
+
+        assignment[lonely] = Some(host);
+    }
+}
+
+/// Renumbers the groups so the ids run 0..n with nothing missing.
+///
+/// Merging leaves gaps, and the palette is built by indexing this number: a gap
+/// would put a colour in the round's sweep that no cell on the board wears, so
+/// the ground would stop somewhere and nothing would vanish.
+fn compact_groups(assignment: &mut [Option<usize>]) {
+    let mut renumbered: HashMap<usize, usize> = HashMap::new();
+
+    for slot in assignment.iter_mut() {
+        let Some(group) = *slot else {
+            continue;
+        };
+        let next = renumbered.len();
+        *slot = Some(*renumbered.entry(group).or_insert(next));
+    }
 }
 
 /// Picks the answer: a filled cell whose group has company, preferring one
@@ -400,28 +624,86 @@ mod tests {
         }
     }
 
+    /// The level asks for a share of empty cells and has to get it — every
+    /// round, not on average.
+    ///
+    /// This was the loosest test here, and the slack hid a real bug. Seeds were
+    /// drawn at random from the whole board, so a region the empty veins had cut
+    /// off could receive none, and every cell in it went unassigned — drawn as
+    /// yet more bare ground. The mean stayed on target, which is why a tolerant
+    /// test passed, but individual boards came out 46% empty at a level asking
+    /// for 20%, and 82% empty at one asking for 50%: the blobs gone, and the
+    /// answer with nothing left to hide among. Seeding per region fixed it, and
+    /// the tolerance is now one cell — the rounding in the share itself.
     #[test]
     fn the_empty_share_is_respected() {
+        const GROUPS: usize = 6;
         let mut rng = rng();
 
-        for empty_share in [0.2, 0.35, 0.5] {
-            let pieces = board(10);
-            let pattern = generate(&pieces, 6, empty_share, &mut rng);
+        for columns in [4, 8, 12, 16] {
+            for empty_share in [0.2, 0.35, 0.5] {
+                let pieces = board(columns);
 
-            let empty = pieces.len() - pattern.filled_count();
-            let wanted = pieces.len() as f32 * empty_share;
+                for _ in 0..50 {
+                    let pattern = generate(&pieces, GROUPS, empty_share, &mut rng);
 
-            assert!(
-                (empty as f32 - wanted).abs() <= wanted * 0.15 + 2.0,
-                "asked {:.0} empty cells, got {}",
-                wanted,
-                empty
-            );
+                    let empty = pieces.len() - pattern.filled_count();
+                    // The same ceiling `generate` applies: a small board cannot
+                    // give the curve everything it asks for and still leave the
+                    // groups somewhere to live.
+                    let wanted = ((pieces.len() as f32 * empty_share) as usize)
+                        .min(pieces.len() - (GROUPS * 2 + 1));
+
+                    assert!(
+                        empty.abs_diff(wanted) <= 1,
+                        "{} columns at {}: asked {} empty cells, got {}",
+                        columns,
+                        empty_share,
+                        wanted,
+                        empty
+                    );
+                }
+            }
         }
     }
 
     /// Empty cells in veins, not speckle: most of them should touch another
     /// empty cell.
+    /// No group may be a single cell.
+    ///
+    /// A lone hexagon in a colour nothing else wears is the description of the
+    /// answer, so the player who spots it is being punished for playing the
+    /// round correctly. Every group has to be big enough to read as a blob.
+    #[test]
+    fn no_group_is_a_lone_cell() {
+        let mut rng = rng();
+
+        for columns in [4, 8, 12, 16] {
+            for empty_share in [0.2, 0.35, 0.5] {
+                let pieces = board(columns);
+
+                for _ in 0..50 {
+                    let pattern = generate(&pieces, 8, empty_share, &mut rng);
+
+                    let mut population = HashMap::new();
+                    for group in pattern.groups.iter().flatten() {
+                        *population.entry(*group).or_insert(0usize) += 1;
+                    }
+
+                    for (group, cells) in population {
+                        assert!(
+                            cells >= 2,
+                            "{} columns at {}: group {} is one cell on its own",
+                            columns,
+                            empty_share,
+                            group
+                        );
+                    }
+                }
+            }
+        }
+    }
+
     #[test]
     fn empty_cells_clump() {
         let mut rng = rng();
@@ -467,3 +749,5 @@ mod tests {
         }
     }
 }
+
+
