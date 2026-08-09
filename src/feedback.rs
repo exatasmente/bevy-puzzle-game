@@ -246,14 +246,9 @@ pub struct BannerEvent {
 }
 
 impl BannerEvent {
-    pub fn new(text: impl Into<String>, color: Color) -> Self {
-        Self {
-            text: text.into(),
-            color,
-            size: theme::TEXT_LG,
-        }
-    }
-
+    /// The only banner left is the level-up. The streak milestones used to send
+    /// a smaller one, and they interrupted the board-reading they were meant to
+    /// celebrate.
     pub fn large(text: impl Into<String>, color: Color) -> Self {
         Self {
             text: text.into(),

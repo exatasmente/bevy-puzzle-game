@@ -3,6 +3,7 @@ use bevy_utils::Duration;
 use rand::prelude::*;
 
 use crate::board::{self, Piece};
+use crate::mosaic_pattern;
 use crate::oklab::{self, Oklab};
 use crate::theme;
 use crate::wfc::{self, Tile};
@@ -38,7 +39,7 @@ impl PuzzleColor {
 
     /// Whether a world-space point lands on this piece.
     pub fn contains(&self, point : Vec2) -> bool {
-        Piece { centre : Vec2::new(self.x, self.y), corners : self.corners.clone() }.contains(point)
+        board::contains(Vec2::new(self.x, self.y), &self.corners, point)
     }
 }
 
@@ -147,6 +148,18 @@ impl GameMode {
     pub fn is_mosaic(&self) -> bool {
         matches!(self, GameMode::Mosaic)
     }
+
+    /// How long a missed board stays up before the next round.
+    ///
+    /// Shorter when there is a clock, because the hold is charged twice there:
+    /// once in the point, once in the seconds it eats.
+    pub fn hold_seconds(&self) -> f32 {
+        if self.is_timed() {
+            0.45
+        } else {
+            0.7
+        }
+    }
 }
 
 
@@ -165,6 +178,9 @@ pub struct ColorPuzzle {
     current_slots: Vec<Piece>,
     /// Columns the mosaic was generated on. Only meaningful with `current_tiles`.
     current_columns: usize,
+    /// The round's distinct colours, which the ground sweeps through before it
+    /// settles on the answer's.
+    current_palette: Vec<Color>,
     correct_color_index: usize,
     pub game_mode: GameMode,
     pub seconds_added_per_success: f32,
@@ -183,64 +199,105 @@ impl Default for ColorPuzzle {
     }
 }
 
-/// Celebration text for a streak length, if that length deserves one.
-///
-/// Milestones are spaced out on purpose. Praise on every second pick stops
-/// being information and becomes noise the player learns to ignore.
-pub fn streak_milestone_label(streak: usize) -> Option<&'static str> {
-    match streak {
-        3 => Some("SEQUENCIA x3"),
-        5 => Some("EM CHAMAS!"),
-        10 => Some("IMPARAVEL!"),
-        15 => Some("LENDARIO!"),
-        other if other > 15 && other % 10 == 0 => Some("INACREDITAVEL!"),
-        _ => None,
-    }
+/// Whether two colors are the same paint.
+pub fn colors_match(a: Color, b: Color) -> bool {
+    (a.r() - b.r()).abs() < 1e-4 && (a.g() - b.g()).abs() < 1e-4 && (a.b() - b.b()).abs() < 1e-4
 }
 
-/// Score at which each level begins. Index 0 is level 1.
-///
-/// Deliberately front-loaded: the first level up lands after five points, while
-/// the player is still deciding whether this game is worth their attention. The
-/// gaps widen after that so later levels stay meaningful.
-const LEVEL_START_SCORES: [usize; 9] = [0, 5, 11, 20, 32, 47, 65, 86, 110];
+// --- The difficulty curve --------------------------------------------------
+//
+// There is no level table any more, and no last level. The old table was
+// exactly `2 + 3L(L-1)/2` from level two on, so the curve it described is kept
+// and simply continues: five points to reach level two, then three more points
+// per level, forever. Stored runs keep the level they had.
+//
+// Every dial below is a monotone function of the level with an asymptote. Being
+// honest about the asymptote matters: below roughly 0.008 in Oklab a colour
+// difference is a coin flip rather than a challenge, so the difficulty plateaus
+// even though the levels keep counting.
 
-/// Smallest and largest number of pieces on screen.
-///
-/// Higher than it was: the board is cut irregularly now, and four pieces come
-/// out as four slabs. A hidden slab is a quadrant of empty screen, which is not
-/// a puzzle. Six is the fewest that reads as a mosaic with a hole in it.
-const MIN_COLORS: usize = 6;
-const MAX_COLORS: usize = 14;
-
-/// 1-based level for a score.
-pub fn level_for_score(score: usize) -> usize {
-    LEVEL_START_SCORES
-        .iter()
-        .rposition(|start| score >= *start)
-        .unwrap_or(0)
-        + 1
-}
-
-/// Score at which `level` begins. Levels past the table clamp to the last entry.
+/// Score at which `level` begins.
 pub fn score_for_level(level: usize) -> usize {
-    let index = level.saturating_sub(1).min(LEVEL_START_SCORES.len() - 1);
-    LEVEL_START_SCORES[index]
+    if level <= 1 {
+        return 0;
+    }
+
+    // In `u64` because `usize` is 32 bits on wasm32, where the plain form
+    // overflows somewhere past level fifty thousand.
+    let level = level as u64;
+    let start = 2u64.saturating_add(3u64.saturating_mul(level).saturating_mul(level - 1) / 2);
+
+    start.min(usize::MAX as u64) as usize
 }
 
-pub fn max_level() -> usize {
-    LEVEL_START_SCORES.len()
+/// 1-based level for a score: the inverse of [`score_for_level`].
+pub fn level_for_score(score: usize) -> usize {
+    if score < 5 {
+        return 1;
+    }
+
+    // Solving `2 + 3L(L-1)/2 <= score`. `f64`, not `f32`: `f32` stops
+    // representing consecutive integers around 1.6e7, well inside a reachable
+    // score. The two corrections then make the boundary exact rather than
+    // merely convincing.
+    let estimate = (3.0 + (24.0 * score as f64 - 30.0).sqrt()) / 6.0;
+    let mut level = estimate.floor().max(1.0) as usize;
+
+    while score_for_level(level + 1) <= score {
+        level += 1;
+    }
+    while level > 1 && score_for_level(level) > score {
+        level -= 1;
+    }
+
+    level
 }
 
-/// Perceptual distance between the odd square and the rest, by level.
+/// Columns of hexagons on the board.
 ///
-/// This is the difficulty dial, in Oklab units: about 0.02 is subtle, 0.01 is
-/// hard, and below 0.005 is a coin flip. Because the unit is perceptual, a
-/// level means the same thing whether the round came out olive or navy — which
-/// was not true of the old per-channel sRGB variation.
+/// Stops at sixteen: the honeycomb fills the screen, so more columns only means
+/// smaller cells, and past this they stop being worth aiming at.
+pub fn columns_for_level(level: usize) -> usize {
+    let steps = level.saturating_sub(1) as f32;
+    let span = (board::MAX_COLUMNS - board::MIN_COLUMNS) as f32;
+
+    board::MIN_COLUMNS + (span * (1.0 - (-steps / 9.0).exp())).round() as usize
+}
+
+/// Share of cells left empty, showing the ground.
+///
+/// This is the dial that keeps working after the board stops growing: every
+/// empty cell is another hole for the answer to hide among once the sweep has
+/// finished.
+pub fn empty_share_for_level(level: usize) -> f32 {
+    let steps = level.saturating_sub(1) as f32;
+    0.50 - 0.30 * (-steps / 9.0).exp()
+}
+
+/// How many colours the round's mosaic is built from.
+///
+/// Small on purpose. The background sweeps colours, not cells, so the palette
+/// size is how many steps that sweep has — a board of three hundred distinct
+/// colours would flicker through them in two milliseconds each and show nothing.
+pub fn palette_size_for_level(level: usize) -> usize {
+    let steps = level.saturating_sub(1) as f32;
+    4 + (4.0 * (1.0 - (-steps / 12.0).exp())).round() as usize
+}
+
+/// Perceptual distance between the answer and the group it hides in, in Oklab
+/// units: about 0.02 is subtle, 0.01 is hard, below 0.005 is a coin flip.
+///
+/// Because the unit is perceptual, a level means the same thing whether the
+/// round came out olive or navy — which was not true of the per-channel sRGB
+/// variation this replaced.
+pub const MIN_COLOR_DELTA: f32 = 0.010;
 pub fn color_delta_for_level(level: usize) -> f32 {
-    let steps = (level.saturating_sub(1)) as f32;
-    (0.080 - steps * 0.0075).max(0.018)
+    let steps = level.saturating_sub(1) as f32;
+    // Starts at 0.050 rather than the 0.080 the old cluster model used. The
+    // answer now lives inside a colour group with other groups nearby, and a
+    // delta that large would carry it across the gap into the next group's
+    // colour — at which point the ground settling would erase two things.
+    MIN_COLOR_DELTA + 0.040 * (-steps / 6.0).exp()
 }
 
 /// How long the board stays visible in `Memory` before it blanks, by level.
@@ -286,12 +343,6 @@ pub fn mosaic_violations_for_level(level: usize) -> usize {
     } else {
         2
     }
-}
-
-/// Number of squares on screen at a level. Grows one at a time and stops well
-/// before the board turns into a wall of confetti.
-pub fn color_count_for_level(level: usize) -> usize {
-    (MIN_COLORS + level.saturating_sub(1)).min(MAX_COLORS)
 }
 
 // --- Board grid ------------------------------------------------------------
@@ -370,6 +421,7 @@ impl ColorPuzzle {
             current_tiles: vec![],
             current_slots: vec![],
             current_columns: 0,
+            current_palette: vec![],
             correct_color_index: 0,
             game_mode: GameMode::TimeTrial,
             seconds_added_per_success: 3.0,
@@ -506,81 +558,174 @@ impl ColorPuzzle {
 
         let delta = color_delta_for_level(level);
 
-        // Cut the board first and take the round's size from it. The cut drops
-        // any piece too thin to tap, so asking for a count and assuming it is
-        // what you got would leave a color — possibly the answer — with no
-        // piece to live on.
-        let slots = self.cut_board(color_count_for_level(level), &mut rng);
-        let count = slots.len().max(2);
+        let slots = self.cut_board(columns_for_level(level));
+        // The mosaic: which cells are empty, which colour group each filled
+        // cell belongs to, and which one is the answer.
+        let pattern = mosaic_pattern::generate(
+            &slots,
+            palette_size_for_level(level),
+            empty_share_for_level(level),
+            &mut rng,
+        );
 
         // The centre of the round, kept off the extremes of lightness so the
-        // colors around it have room to move in any direction and still be
-        // displayable.
+        // palette has room to spread in any direction and stay displayable.
         let base_lab = Self::random_base(&mut rng);
         let base_color = oklab::to_color(base_lab).unwrap_or(Color::rgb(0.5, 0.5, 0.5));
+        let palette = Self::palette(&mut rng, base_lab, pattern.group_count);
 
-        // Every square gets its own color. They used to be literally identical,
-        // which read as a flat wall of one paint and made the odd square a
-        // difference from its *neighbours* rather than from the group.
-        //
-        // Each distractor is nudged off the base by at most `CLUSTER` of the
-        // round's delta, so the group stays a tight cluster: the widest gap
-        // inside it is 2 * CLUSTER * delta, while the odd color sits at least
-        // (1 - CLUSTER) * delta from every one of them. With CLUSTER at 0.22
-        // that is 0.44 against 0.78 — the outlier is still the outlier by a
-        // wide margin, and there is exactly one defensible answer.
-        const CLUSTER: f32 = 0.22;
+        // Only filled cells become pieces. An empty cell is simply absent —
+        // it shows the ground, which is the whole point of it.
+        let mut slots_in_play: Vec<Piece> = Vec::with_capacity(pattern.filled_count());
+        let mut colors: Vec<Color> = Vec::with_capacity(pattern.filled_count());
+        let mut correct = 0;
 
-        let mut labs: Vec<Oklab> = Vec::with_capacity(count);
-        let mut colors: Vec<Color> = Vec::with_capacity(count);
-
-        while colors.len() + 1 < count {
-            let amount = rng.gen_range(CLUSTER * 0.45..CLUSTER) * delta;
-            let Some((lab, color)) = Self::nudge(&mut rng, base_lab, amount) else {
+        for (index, piece) in slots.into_iter().enumerate() {
+            let Some(group) = pattern.groups[index] else {
                 continue;
             };
 
-            // No two squares may share a color: a repeat invites the player to
-            // read the pair as a rule of its own.
-            let separation = delta * CLUSTER * 0.4;
-            if labs.iter().any(|other| Self::distance(*other, lab) < separation) {
-                continue;
+            if index == pattern.answer {
+                correct = colors.len();
+                // The answer wears its group's colour moved by the level's
+                // delta: a near-twin of everything around it, and the only cell
+                // on the board wearing exactly this colour.
+                colors.push(Self::answer_color(&mut rng, &palette, group, delta));
+            } else {
+                colors.push(palette[group].1);
             }
 
-            labs.push(lab);
-            colors.push(color);
+            slots_in_play.push(piece);
         }
 
-        // The odd one out. Its direction is random, but weighted away from pure
-        // lightness: a square that is simply lighter than the rest is the
-        // easiest difference the visual system has, and letting the dice pick it
-        // half the time made levels swing between trivial and hard.
-        let odd_color = Self::nudge_chromatic(&mut rng, base_lab, delta)
-            .map(|(_, color)| color)
-            .unwrap_or(base_color);
-
-        self.correct_color_index = rng.gen_range(0..count);
-        colors.insert(self.correct_color_index, odd_color);
-
+        self.correct_color_index = correct;
         self.base_color = base_color;
         self.current_tiles = vec![];
         self.current_columns = 0;
-        self.current_slots = slots;
+        self.current_slots = slots_in_play;
+        self.current_palette = palette.into_iter().map(|(_, color)| color).collect();
         self.current_colors = colors;
     }
 
-    /// Cuts this round's pieces out of the play area.
-    fn cut_board(&self, count: usize, rng: &mut ThreadRng) -> Vec<Piece> {
+    /// The round's colour groups.
+    ///
+    /// Built by walking an arc of hue around the round's base rather than by
+    /// nudging in random directions and hoping. Random nudges have to be
+    /// rejection-sampled against each other, and the separation the round needs
+    /// — comfortably more than the answer's delta — is a large distance in
+    /// Oklab: most candidates fall outside what a screen can show, the budget
+    /// runs out, and every group ends up the fallback colour. That is what
+    /// happened here, and the board came out in one flat blue.
+    ///
+    /// An arc gives the guarantee directly: `groups` hues spread evenly are
+    /// separated by construction, and staying near the base's lightness and
+    /// chroma keeps them all displayable and looking like one family.
+    fn palette(rng: &mut ThreadRng, base: Oklab, groups: usize) -> Vec<(Oklab, Color)> {
+        let base_hue = base.b.atan2(base.a);
+        let base_chroma = (base.a * base.a + base.b * base.b).sqrt().max(0.06);
+
+        // A little over half the circle: far enough apart to tell one group
+        // from the next, close enough that the board reads as one mosaic
+        // rather than a paint chart.
+        const ARC: f32 = std::f32::consts::PI * 1.15;
+
+        (0..groups)
+            .map(|group| {
+                let share = if groups <= 1 {
+                    0.5
+                } else {
+                    group as f32 / (groups - 1) as f32
+                };
+
+                let hue = base_hue - ARC / 2.0 + ARC * share + rng.gen_range(-0.05..0.05);
+                let lightness = (base.l + rng.gen_range(-0.09..0.09)).clamp(0.45, 0.85);
+                let mut chroma = (base_chroma * rng.gen_range(0.8..1.15)).clamp(0.05, 0.16);
+
+                // Some hues cannot be as saturated as others at a given
+                // lightness; walk the chroma down rather than clamp the colour,
+                // which would move it off its hue.
+                for _ in 0..10 {
+                    let candidate = Oklab::from_lch(lightness, chroma, hue);
+                    if let Some(color) = oklab::to_color(candidate) {
+                        return (candidate, color);
+                    }
+                    chroma *= 0.85;
+                }
+
+                let flat = Oklab::from_lch(lightness, 0.0, hue);
+                (flat, oklab::to_color(flat).unwrap_or(Color::rgb(0.5, 0.5, 0.5)))
+            })
+            .collect()
+    }
+
+    /// The answer's colour: its group's, moved by the level's delta.
+    ///
+    /// It has to stay clear of every *other* group as well. When the ground
+    /// settles on this colour the answer disappears; if another group's colour
+    /// were within a delta of it, that whole group would nearly disappear too
+    /// and the round would have more than one defensible answer.
+    fn answer_color(
+        rng: &mut ThreadRng,
+        palette: &[(Oklab, Color)],
+        group: usize,
+        delta: f32,
+    ) -> Color {
+        let own = palette[group].0;
+        let clearance = (delta * 2.0).max(0.03);
+        let mut fallback = palette[group].1;
+
+        for _ in 0..48 {
+            let Some((lab, color)) = Self::nudge_chromatic(rng, own, delta) else {
+                continue;
+            };
+
+            fallback = color;
+
+            let clear = palette
+                .iter()
+                .enumerate()
+                .all(|(other, (lab_other, _))| {
+                    other == group || Self::distance(lab, *lab_other) > clearance
+                });
+
+            if clear {
+                return color;
+            }
+        }
+
+        fallback
+    }
+
+    /// Lays this round's honeycomb over the play area.
+    fn cut_board(&self, columns: usize) -> Vec<Piece> {
         let area = self.play_area();
         let min = Vec2::new(-area.x / 2.0, self.play_bottom());
         let max = Vec2::new(area.x / 2.0, self.play_bottom() + area.y);
 
-        board::layout(min, max, count, rng)
+        board::layout(min, max, columns)
     }
 
     /// This round's pieces, or an empty list in `Mosaic`.
     pub fn slots(&self) -> &[Piece] {
         &self.current_slots
+    }
+
+    /// The colours the ground travels through this round, in order, ending on
+    /// the answer's.
+    ///
+    /// This is the round's other channel of information. Every group vanishes
+    /// for a moment as the ground passes its colour; the answer is the one that
+    /// vanishes at the end and stays gone. Without it the board would be a
+    /// field of holes with no way to tell which one was a piece.
+    pub fn sweep(&self) -> Vec<Color> {
+        let answer = self.background_color();
+        let mut sweep: Vec<Color> = self.current_palette.clone();
+
+        // The answer's own colour is the destination, so it must not also be a
+        // stop along the way.
+        sweep.retain(|color| !colors_match(*color, answer));
+        sweep.push(answer);
+        sweep
     }
 
     /// Perceptual distance between two colors.
@@ -691,27 +836,15 @@ impl ColorPuzzle {
     /// the player can see approaching pulls harder than an invisible one.
     pub fn progress_to_next_level(&self) -> f32 {
         let level = self.level();
-        if level >= max_level() {
-            return 1.0;
-        }
-
         let start = score_for_level(level);
         let next = score_for_level(level + 1);
-        if next <= start {
-            return 1.0;
-        }
 
-        ((self.score - start) as f32 / (next - start) as f32).clamp(0.0, 1.0)
+        ((self.score - start) as f32 / (next - start).max(1) as f32).clamp(0.0, 1.0)
     }
 
-    /// Points still needed for the next level, if there is one.
-    pub fn points_to_next_level(&self) -> Option<usize> {
-        let level = self.level();
-        if level >= max_level() {
-            return None;
-        }
-
-        Some(score_for_level(level + 1).saturating_sub(self.score))
+    /// Points still needed for the next level. There is always a next level.
+    pub fn points_to_next_level(&self) -> usize {
+        score_for_level(self.level() + 1).saturating_sub(self.score)
     }
 
     /// The background for this round.
@@ -995,6 +1128,49 @@ pub struct GameTimer {
     pub timer: Timer,
 }
 
+/// Swallows input for the handful of frames between a pick and the new board's
+/// entities actually existing.
+///
+/// The background transition used to do this job as a side effect of locking
+/// input for its whole length. It is a real job, and it outlives the lock:
+/// `spawn_objects` despawns the old pieces through `Commands`, which are not
+/// applied until the end of the stage, so on the frame a round is regenerated
+/// `player_interaction` can still see the *old* entities and bank a second
+/// point against a round that is already over. This lock covers exactly that
+/// window and nothing more — it is shorter than any human double tap, so a
+/// player who wants to answer the instant the board appears can.
+#[derive(Resource, Default)]
+pub struct RoundIntro {
+    timer: Option<Timer>,
+}
+
+impl RoundIntro {
+    const LOCK_SECONDS: f32 = 0.12;
+
+    pub fn arm(&mut self) {
+        self.timer = Some(Timer::from_seconds(Self::LOCK_SECONDS, TimerMode::Once));
+    }
+
+    pub fn is_locked(&self) -> bool {
+        self.timer.is_some()
+    }
+
+    pub fn clear(&mut self) {
+        self.timer = None;
+    }
+
+    pub fn tick(&mut self, delta: std::time::Duration) {
+        let Some(timer) = self.timer.as_mut() else {
+            return;
+        };
+
+        timer.tick(delta);
+        if timer.finished() {
+            self.timer = None;
+        }
+    }
+}
+
 /// Drives a `Memory` round: board visible, then blank.
 ///
 /// Kept as a resource rather than a component on the squares because the phase
@@ -1061,12 +1237,10 @@ pub struct PendingLevelStart {
 }
 
 impl PendingLevelStart {
-    /// How long the missed board stays up. Long enough to look at, short enough
-    /// not to feel like a penalty.
-    const HOLD_SECONDS: f32 = 0.7;
-
-    pub fn hold(&mut self) {
-        self.timer = Some(Timer::from_seconds(Self::HOLD_SECONDS, TimerMode::Once));
+    /// Holds the board for `seconds` — long enough to look at, short enough not
+    /// to feel like a penalty. See `GameMode::hold_seconds`.
+    pub fn hold(&mut self, seconds: f32) {
+        self.timer = Some(Timer::from_seconds(seconds, TimerMode::Once));
     }
 
     pub fn is_holding(&self) -> bool {
@@ -1091,5 +1265,167 @@ impl PendingLevelStart {
 
     pub fn clear(&mut self) {
         self.timer = None;
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The curve replaced a nine-entry table, and it has to reproduce it: a
+    /// stored run carries a score, and a player who left at level seven must
+    /// come back to level seven.
+    #[test]
+    fn the_curve_reproduces_the_table_it_replaced() {
+        const TABLE: [usize; 9] = [0, 5, 11, 20, 32, 47, 65, 86, 110];
+
+        for (index, start) in TABLE.iter().enumerate() {
+            assert_eq!(score_for_level(index + 1), *start, "level {}", index + 1);
+        }
+    }
+
+    /// `level_for_score` is the inverse, at the boundaries as well as between
+    /// them.
+    #[test]
+    fn levels_and_scores_agree() {
+        for level in 1..2_000 {
+            let start = score_for_level(level);
+            assert_eq!(level_for_score(start), level, "at the start of level {}", level);
+
+            if start > 0 {
+                assert_eq!(
+                    level_for_score(start - 1),
+                    level - 1,
+                    "one point short of level {}",
+                    level
+                );
+            }
+        }
+    }
+
+    /// No level is the last one, and nothing overflows on the way there — on
+    /// wasm32 `usize` is 32 bits, which the plain form of the formula outgrows.
+    #[test]
+    fn the_curve_never_ends() {
+        let mut previous = 0;
+
+        for level in 1..100_000 {
+            let start = score_for_level(level);
+            assert!(start >= previous, "level {} went backwards", level);
+            previous = start;
+        }
+
+        assert!(score_for_level(usize::MAX) > 0);
+    }
+
+    /// Every dial moves in one direction and settles, so a level is never
+    /// easier than the one before it.
+    #[test]
+    fn the_dials_are_monotone() {
+        let mut columns = 0;
+        let mut empty = 0.0;
+        let mut palette = 0;
+        let mut delta = f32::MAX;
+        let mut preview = f32::MAX;
+
+        for level in 1..500 {
+            let next_columns = columns_for_level(level);
+            let next_empty = empty_share_for_level(level);
+            let next_palette = palette_size_for_level(level);
+            let next_delta = color_delta_for_level(level);
+            let next_preview = preview_seconds_for_level(level);
+
+            assert!(next_columns >= columns);
+            assert!(next_empty >= empty - 1e-6);
+            assert!(next_palette >= palette);
+            assert!(next_delta <= delta + 1e-6);
+            assert!(next_preview <= preview + 1e-6);
+
+            columns = next_columns;
+            empty = next_empty;
+            palette = next_palette;
+            delta = next_delta;
+            preview = next_preview;
+        }
+
+        // And they settle where the plan says they do.
+        assert_eq!(columns, board::MAX_COLUMNS);
+        assert!((empty - 0.5).abs() < 0.01);
+        assert_eq!(palette, 8);
+        assert!((delta - MIN_COLOR_DELTA).abs() < 1e-4);
+    }
+
+    /// The board must come out in several colours.
+    ///
+    /// It once did not: the palette was built by nudging away from the base by
+    /// a distance no displayable colour could reach, every attempt was rejected,
+    /// and all groups fell back to the base — a board in one flat blue, with no
+    /// pattern to read and no group for the ground to visit on its way past.
+    /// The distance is a property of the construction now, and this is what
+    /// says so.
+    #[test]
+    fn every_colour_group_is_visibly_its_own() {
+        let mut rng = rand::thread_rng();
+
+        for level in [1usize, 2, 5, 10, 20, 50] {
+            let groups = palette_size_for_level(level);
+            let delta = color_delta_for_level(level);
+
+            for _ in 0..200 {
+                let base = ColorPuzzle::random_base(&mut rng);
+                let palette = ColorPuzzle::palette(&mut rng, base, groups);
+                assert_eq!(palette.len(), groups);
+
+                for (i, (a, _)) in palette.iter().enumerate() {
+                    for (j, (b, _)) in palette.iter().enumerate().skip(i + 1) {
+                        let distance = ColorPuzzle::distance(*a, *b);
+                        // Comfortably more than the answer's delta: the answer
+                        // has to be the only cell wearing its colour, and a
+                        // group sitting within a delta of it would vanish with
+                        // it when the ground settles.
+                        assert!(
+                            distance > delta * 3.0,
+                            "level {level}: groups {i} and {j} only {distance} apart                              (delta {delta})"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    /// The answer hides inside its own group and clear of every other one.
+    #[test]
+    fn the_answer_is_alone_in_its_colour() {
+        let mut rng = rand::thread_rng();
+
+        for level in [1usize, 5, 20] {
+            let groups = palette_size_for_level(level);
+            let delta = color_delta_for_level(level);
+
+            for _ in 0..100 {
+                let base = ColorPuzzle::random_base(&mut rng);
+                let palette = ColorPuzzle::palette(&mut rng, base, groups);
+
+                for group in 0..groups {
+                    let answer = ColorPuzzle::answer_color(&mut rng, &palette, group, delta);
+
+                    // Its own group is the one it must NOT be far from — that
+                    // is the puzzle. Everything else it must be clear of.
+                    assert!(
+                        !colors_match(answer, palette[group].1),
+                        "level {level}: the answer came out as its own group's colour"
+                    );
+
+                    for (other, (_, color)) in palette.iter().enumerate() {
+                        if other == group {
+                            continue;
+                        }
+                        assert!(
+                            !colors_match(answer, *color),
+                            "level {level}: the answer matched group {other}"
+                        );
+                    }
+                }
+            }
+        }
     }
 }

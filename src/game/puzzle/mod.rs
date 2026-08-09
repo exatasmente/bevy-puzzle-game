@@ -21,6 +21,7 @@ impl Plugin for PuzzlePlugin {
             .init_resource::<GameTimer>()
             .init_resource::<PendingLevelStart>()
             .init_resource::<MemoryPhase>()
+            .init_resource::<RoundIntro>()
             .register_type::<ColorPuzzle>()
             .add_system(start_puzzle_level.in_schedule(OnEnter(crate::AppState::Game)))
             .add_system(despaw_objects.in_schedule(OnExit(crate::AppState::Game)))
@@ -35,6 +36,7 @@ impl Plugin for PuzzlePlugin {
                 store_last_interaction_state,
                 spawn_objects,
                 advance_pending_level,
+                tick_round_intro,
                 hide_memory_board,
                 player_interaction,
             ).in_set(OnUpdate(crate::AppState::Game)))

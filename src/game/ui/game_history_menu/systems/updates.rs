@@ -33,6 +33,7 @@ pub fn spawn_pagination_itens(
     asset_server: Res<AssetServer>,
     mut pagination: ResMut<Pagination>,
     mut spawn_pagination_event_reader: EventReader<SpawnPaginationEvent>,
+    muted: Res<crate::audio::Muted>,
     window_query: Query<&Window>,
 ) {
     if spawn_pagination_event_reader.iter().count() == 0 {
@@ -116,12 +117,36 @@ pub fn spawn_pagination_itens(
         if game_history.levels_played > 0 {
             build_pagination_element(&asset_server, parent, &mut pagination, width);
         }
-        build_actions(&asset_server, parent, width);
+        build_actions(&asset_server, parent, width, muted.is_muted());
     });
 }
 
-fn build_actions(asset_server: &Res<AssetServer>, parent: &mut ChildBuilder, width: f32) {
+fn build_actions(
+    asset_server: &Res<AssetServer>,
+    parent: &mut ChildBuilder,
+    width: f32,
+    muted: bool,
+) {
     let text_width = theme::button_text_width(width);
+
+    // The pause screen is where the mock-up put the sound control, and it is
+    // the only screen a player reaches mid-run without losing anything.
+    parent
+        .spawn((
+            ButtonBundle {
+                style: button_style(width),
+                background_color: BUTTON.into(),
+                ..default()
+            },
+            SoundToggleButton,
+        ))
+        .with_children(|parent| {
+            parent.spawn(theme::wrapped_text(
+                if muted { "SOM: MUDO" } else { "SOM: LIGADO" },
+                get_button_text_style(asset_server),
+                text_width,
+            ));
+        });
 
     parent
         .spawn((

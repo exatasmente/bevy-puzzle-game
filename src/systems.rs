@@ -3,10 +3,21 @@ use bevy::prelude::*;
 use crate::AppState;
 
 
+/// The ground's journey through the round's colors.
+///
+/// Not a fade from one color to another: a *sweep* that stops at every color on
+/// the board and ends on the answer's. As it passes a color, every piece
+/// wearing that color melts into the ground for a moment; when it lands, the
+/// answer melts and does not come back.
+///
+/// That sweep is the round's second channel of information, and the reason the
+/// board can be a regular lattice full of deliberate holes without the round
+/// becoming a lottery: the player who watched knows which hole appeared last.
 #[derive(Component, Debug, Reflect)]
 pub struct BackgroundTranstion {
-    start_color: Color,
-    end_color: Color,
+    /// Where the ground starts, then every color it visits. The last entry is
+    /// the answer's color.
+    path: Vec<Color>,
     time: f32,
     current_time: f32,
 }
@@ -14,12 +25,21 @@ pub struct BackgroundTranstion {
 impl Default for BackgroundTranstion {
     fn default() -> Self {
         Self {
-            start_color: Color::rgb(0.0, 0.0, 0.0),
-            end_color: Color::rgb(0.0, 0.0, 0.0),
-            time: 3.0,
-            current_time: 0.0,
+            path: vec![Color::rgb(0.0, 0.0, 0.0)],
+            time: 1.0,
+            current_time: 1.0,
         }
     }
+}
+
+/// Componentwise lerp between two colors.
+pub fn lerp_color(from: Color, to: Color, amount: f32) -> Color {
+    let amount = amount.clamp(0.0, 1.0);
+    Color::rgb(
+        from.r() + (to.r() - from.r()) * amount,
+        from.g() + (to.g() - from.g()) * amount,
+        from.b() + (to.b() - from.b()) * amount,
+    )
 }
 
 impl BackgroundTranstion {
@@ -27,73 +47,48 @@ impl BackgroundTranstion {
         self.current_time < self.time
     }
 
-    fn get_color_diff(&mut self, a : f32, b : f32) -> f32 {
-        if a > b {
-            a - b
-        } else {
-            b - a
-        }
-    }
-
-    pub fn get_current_color(&mut self) -> Color {
-        let mut color = self.start_color.clone();
-        let red_diff = self.get_color_diff(self.start_color.r(), self.end_color.r());
-        let green_diff = self.get_color_diff(self.start_color.g(), self.end_color.g());
-        let blue_diff = self.get_color_diff(self.start_color.b(), self.end_color.b());
-        
-        let red_change = if self.start_color.r() > self.end_color.r() {
-            self.start_color.r() - ((red_diff / self.time) * self.current_time)
-        } else {
-            self.start_color.r() + ((red_diff / self.time)  * self.current_time)
-        };
-
-        let green_change = if self.start_color.g() > self.end_color.g() {
-            self.start_color.g() - ((green_diff / self.time) * self.current_time)
-        } else {
-            self.start_color.g() + ((green_diff / self.time ) * self.current_time)
-        };
-
-        let blue_change = if self.start_color.b() > self.end_color.b() {
-            self.start_color.b() - ((blue_diff / self.time) * self.current_time)
-        } else {
-            self.start_color.b() + ((blue_diff / self.time) * self.current_time)
-        };
-
-
-        color.set_r(red_change);
-        color.set_g(green_change);
-        color.set_b(blue_change);
-
-        color
-    }
-    pub fn update(&mut self, time: f32) {
-        if self.is_in_transition() {
-            self.current_time = if self.current_time + time > self.time {
-                self.time
-            } else {
-                self.current_time + time
-            };
-        }
-    }
-
-    pub fn reset(&mut self) {
-        self.start_color = Color::rgb(0.0, 0.0, 0.0);
-        self.end_color = Color::rgb(0.0, 0.0, 0.0);
+    /// Starts a sweep from the ground's current color through `stops`, which
+    /// must end on the color the ground is to settle at.
+    pub fn sweep(&mut self, from: Color, stops: Vec<Color>, seconds: f32) {
+        self.path = std::iter::once(from).chain(stops).collect();
+        self.time = seconds.max(0.001);
         self.current_time = 0.0;
     }
 
-    pub fn set_start_color(&mut self, color: Color) {
-        self.start_color = color;
+    /// Parks the ground on one color, for the screens that are not a round.
+    pub fn set_solid(&mut self, color: Color) {
+        self.path = vec![color];
+        self.current_time = self.time;
     }
 
-    pub fn set_end_color(&mut self, color: Color) {
-        self.end_color = color;
+    pub fn get_current_color(&self) -> Color {
+        let Some(first) = self.path.first().copied() else {
+            return Color::BLACK;
+        };
+
+        let segments = self.path.len().saturating_sub(1);
+        if segments == 0 {
+            return first;
+        }
+
+        // Every stop gets the same slice of the second, so a five-color round
+        // and an eight-color one both feel like one sweep rather than one
+        // dragging and the other rushing.
+        let travelled = (self.current_time / self.time).clamp(0.0, 1.0) * segments as f32;
+        let segment = (travelled.floor() as usize).min(segments - 1);
+
+        lerp_color(
+            self.path[segment],
+            self.path[segment + 1],
+            travelled - segment as f32,
+        )
     }
 
-    pub fn set_time(&mut self, time: f32) {
-        self.time = time;
+    pub fn update(&mut self, time: f32) {
+        if self.is_in_transition() {
+            self.current_time = (self.current_time + time).min(self.time);
+        }
     }
-
 }
 
 pub fn spawn_camera(

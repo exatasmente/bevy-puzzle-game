@@ -121,3 +121,26 @@ pub fn interact_with_end_run_button(
         }
     }
 }
+
+/// Silences the game, or lets it speak again.
+pub fn interact_with_sound_toggle(
+    mut button_query: Query<
+        (&Interaction, &mut BackgroundColor),
+        (Changed<Interaction>, With<SoundToggleButton>),
+    >,
+    mut muted: ResMut<crate::audio::Muted>,
+    mut spawn_pagination_event_writer: EventWriter<SpawnPaginationEvent>,
+) {
+    for (interaction, mut color) in button_query.iter_mut() {
+        match *interaction {
+            Interaction::Clicked => {
+                *color = BUTTON_PRESSED.into();
+                muted.toggle();
+                // The label carries the state, so the list is rebuilt to show it.
+                spawn_pagination_event_writer.send(SpawnPaginationEvent);
+            }
+            Interaction::Hovered => *color = BUTTON_HOVERED.into(),
+            Interaction::None => *color = BUTTON.into(),
+        }
+    }
+}

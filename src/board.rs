@@ -1,33 +1,34 @@
-//! Irregular board layout: an uneven honeycomb.
+//! The honeycomb the board is drawn on.
 //!
-//! Seeds are scattered on a jittered grid and the play area is divided into the
-//! region closest to each one — a Voronoi tessellation. The cells come out as
-//! convex polygons of five to seven sides that tile the area exactly, like a
-//! honeycomb that was drawn by hand. Each cell is then pulled back from its own
-//! edges, which opens the gap between neighbours.
+//! A regular pointy-top hex lattice, sized so it fills the play area, with an
+//! even gap between neighbours. Every cell is the same hexagon — congruent, six
+//! equal sides — because the round is read as a difference *between* cells, and
+//! the eye can only difference against a field it takes as uniform.
 //!
-//! ## Why not a grid
+//! ## The lattice, and what makes the round fair
 //!
-//! Because the answer is a piece painted the same color as the background, and
-//! a grid tells the player exactly where every piece must be. On a grid the
-//! hidden piece is a hole at a known address: the eye finds the one empty cell
-//! pre-attentively, without comparing any colors, and the difficulty dial stops
-//! mattering. With the pieces at unpredictable positions, sizes and shapes there
-//! is no address to check, and the hidden piece has to be found the hard way —
-//! by reading the negative space its neighbours leave.
+//! A regular lattice puts every cell at a predictable address, and the answer is
+//! a cell painted the background color, so it is a hole at a place the eye can
+//! find without comparing anything. On its own that would be trivial. Two things
+//! carry the round instead:
 //!
-//! That is also why the pieces tessellate rather than float: a hole in a mass of
-//! interlocking pieces is bounded by the edges of the pieces around it, so it is
-//! findable. Shapes scattered over empty space would leave the player nothing to
-//! infer from, and the round would be a lottery.
+//! - the board also contains cells that are *deliberately* empty (see
+//!   `src/mosaic_pattern.rs`), so a hole is not by itself the answer, and
+//! - the background sweeps every color on the board before settling on the
+//!   answer's, so the player who watched knows which hole appeared last.
+//!
+//! That is why `layout` reports each piece's `column`/`row`: the pattern
+//! generator needs to know which cells are neighbours, and a mosaic of scattered
+//! single cells is noise rather than a pattern.
 //!
 //! Kept free of Bevy beyond `Vec2` so the invariants below can be tested.
 
 use bevy::prelude::Vec2;
-use rand::prelude::*;
 
-/// One piece of the board: a convex polygon, given as its centre and the
-/// corners around it.
+const SQRT_3: f32 = 1.732_050_8;
+
+/// One cell of the honeycomb: a regular hexagon, given as its centre, the
+/// corners around it, and where it sits on the lattice.
 ///
 /// Corners are relative to `centre` so the piece can be spawned at a transform
 /// and drawn from the same points every time — including on replay.
@@ -35,27 +36,35 @@ use rand::prelude::*;
 pub struct Piece {
     pub centre: Vec2,
     pub corners: Vec<Vec2>,
+    pub column: usize,
+    pub row: usize,
+}
+
+/// Whether a world-space point falls inside a convex polygon given as a centre
+/// and corners relative to it.
+///
+/// The polygon is wound counter-clockwise, so a point is inside when it is to
+/// the left of every edge. Free-standing because the pieces on screen carry
+/// their outline without carrying a whole `Piece`.
+pub fn contains(centre: Vec2, corners: &[Vec2], point: Vec2) -> bool {
+    let local = point - centre;
+    let count = corners.len();
+
+    if count < 3 {
+        return false;
+    }
+
+    (0..count).all(|index| {
+        let a = corners[index];
+        let b = corners[(index + 1) % count];
+        let edge = b - a;
+        edge.x * (local.y - a.y) - edge.y * (local.x - a.x) >= -f32::EPSILON
+    })
 }
 
 impl Piece {
-    /// Whether a world-space point is inside the piece.
-    ///
-    /// The polygon is convex and wound counter-clockwise, so a point is inside
-    /// when it is to the left of every edge.
     pub fn contains(&self, point: Vec2) -> bool {
-        let local = point - self.centre;
-        let count = self.corners.len();
-
-        if count < 3 {
-            return false;
-        }
-
-        (0..count).all(|index| {
-            let a = self.corners[index];
-            let b = self.corners[(index + 1) % count];
-            let edge = b - a;
-            edge.x * (local.y - a.y) - edge.y * (local.x - a.x) >= -f32::EPSILON
-        })
+        contains(self.centre, &self.corners, point)
     }
 
     /// Half-extents of the piece's bounding box, for anything that needs a size
@@ -69,295 +78,168 @@ impl Piece {
     }
 }
 
-/// How far a cell is pulled back from its own edges, opening the gap to its
-/// neighbours. Randomised per piece, so the gaps are as uneven as the cells.
-const MIN_GAP: f32 = 3.0;
+/// Gap between neighbouring cells, as a share of the circumradius and then
+/// clamped. Scaling it with the cell keeps the board looking the same at four
+/// columns and at sixteen; the clamps stop it vanishing on a dense board or
+/// eating a sparse one.
+const GAP_RATIO: f32 = 0.13;
+const MIN_GAP: f32 = 2.0;
 const MAX_GAP: f32 = 7.0;
 
-/// A cell whose inradius falls below this is dropped rather than drawn: it
-/// would be a sliver nobody can tap, and an invisible sliver would be an
-/// unfindable answer.
-const MIN_INRADIUS: f32 = 24.0;
+/// Cells stop growing here, so a four-column board on a desktop window does not
+/// become four billboards.
+const MAX_APOTHEM: f32 = 80.0;
 
-/// How far a seed may wander from its slot on the scaffold grid, as a fraction
-/// of the slot. Zero would give a regular honeycomb; too much lets seeds pass
-/// each other and produce slivers.
-const JITTER: f32 = 0.34;
+/// Fewest and most columns the difficulty curve may ask for.
+pub const MIN_COLUMNS: usize = 4;
+pub const MAX_COLUMNS: usize = 16;
 
-/// Divides the rectangle between `min` and `max` into interlocking pieces.
+/// Fills the rectangle between `min` and `max` with a regular pointy-top hex
+/// lattice of `columns` columns.
 ///
-/// Returns as many pieces as it can place without producing slivers, which may
-/// be fewer than `count`. Callers must size the round to what they get back
-/// rather than to what they asked for.
-pub fn layout(min: Vec2, max: Vec2, count: usize, rng: &mut impl Rng) -> Vec<Piece> {
-    let count = count.max(1);
-    let (mut seeds, playable) = scatter(min, max, count, rng);
-    let frame = vec![
-        min,
-        Vec2::new(max.x, min.y),
-        max,
-        Vec2::new(min.x, max.y),
-    ];
+/// Rows are not a free parameter: with a *regular* hexagon the row spacing is
+/// fixed by the column spacing, so the shape of the play area decides how many
+/// rows there are. On a phone that is roughly 2.2 rows per column.
+pub fn layout(min: Vec2, max: Vec2, columns: usize) -> Vec<Piece> {
+    let columns = columns.clamp(MIN_COLUMNS, MAX_COLUMNS);
+    let area = max - min;
 
-    // One round of Lloyd relaxation:each seed moves to the middle of its own
-    // cell. Jitter alone leaves the occasional seed crowded against a
-    // neighbour, and the sliver that produces has to be dropped — which puts a
-    // second background-colored hole on the board, indistinguishable from the
-    // answer. Relaxing evens the cells out without making them regular, since
-    // the seeds keep the offsets the jitter gave them.
-    for _ in 0..2 {
-        for index in 0..playable {
-            if let Some(cell) = cell_of(&seeds, index, &frame) {
-                seeds[index] = centroid(&cell);
-            }
+    // Even rows hold `columns` hexes and span exactly `columns * width`.
+    let width = (area.x / columns as f32).min(2.0 * MAX_APOTHEM);
+    let radius = width / SQRT_3;
+
+    // Lattice height is radius * (0.5 + 1.5 * rows): every row after the first
+    // adds three quarters of a hexagon.
+    let rows = (((area.y / radius) - 0.5) / 1.5).floor().max(1.0) as usize;
+
+    let lattice = Vec2::new(
+        columns as f32 * width,
+        radius * (0.5 + 1.5 * rows as f32),
+    );
+    let origin = min + (area - lattice) / 2.0;
+
+    let gap = (GAP_RATIO * radius).clamp(MIN_GAP, MAX_GAP);
+    let corners = hexagon(radius - gap / SQRT_3);
+
+    let mut pieces = Vec::with_capacity(rows * columns);
+
+    for row in 0..rows {
+        // Odd rows are shifted half a cell and hold one fewer, so they end up
+        // centred inside the even rows instead of leaving a ragged edge.
+        let odd = row % 2 == 1;
+        let in_row = if odd { columns.saturating_sub(1) } else { columns };
+
+        for column in 0..in_row {
+            let centre = origin
+                + Vec2::new(
+                    width * (0.5 + column as f32 + if odd { 0.5 } else { 0.0 }),
+                    radius * (1.0 + 1.5 * row as f32),
+                );
+
+            pieces.push(Piece {
+                centre,
+                corners: corners.clone(),
+                column,
+                row,
+            });
         }
     }
 
-    let mut pieces = Vec::with_capacity(playable);
-
-    for index in 0..playable {
-        let Some(cell) = cell_of(&seeds, index, &frame) else {
-            continue;
-        };
-
-        let gap = rng.gen_range(MIN_GAP..MAX_GAP);
-        let cell = shrink(&cell, gap);
-
-        if cell.len() < 3 {
-            continue;
-        }
-
-        let centre = centroid(&cell);
-        if inradius(&cell, centre) < MIN_INRADIUS {
-            continue;
-        }
-
-        pieces.push(Piece {
-            centre,
-            corners: cell.iter().map(|corner| *corner - centre).collect(),
-        });
-    }
-
-    // Index order would otherwise run along the scaffold, left to right and
-    // bottom to top. Nothing should be able to infer position from index.
-    pieces.shuffle(rng);
     pieces
 }
 
-/// The region closer to `seeds[index]` than to any other seed, clipped to the
-/// frame. `None` when the seed is crowded out entirely.
-fn cell_of(seeds: &[Vec2], index: usize, frame: &[Vec2]) -> Option<Vec<Vec2>> {
-    let seed = seeds[index];
-    let mut cell = frame.to_vec();
-
-    for (other_index, other) in seeds.iter().enumerate() {
-        if other_index == index {
-            continue;
-        }
-
-        let normal = *other - seed;
-        let midpoint = (*other + seed) / 2.0;
-        cell = clip(&cell, normal, midpoint.dot(normal));
-
-        if cell.len() < 3 {
-            return None;
-        }
-    }
-
-    Some(cell)
-}
-
-/// Seeds on a jittered honeycomb lattice.
-///
-/// A uniform random scatter clumps — some seeds land almost on top of each
-/// other and produce cells too thin to tap. Starting from a lattice and letting
-/// each seed wander inside its own slot keeps them apart while leaving the
-/// result plainly irregular.
-///
-/// The lattice has every other row offset by half a step, which is what makes
-/// the cells hexagonal. This matters more than it sounds: seeds on a square
-/// grid meet four neighbours and their cells come out as quadrilaterals — a
-/// grid that has been shaken, which is exactly the look this layout exists to
-/// avoid. Offset rows give each seed six neighbours, and six neighbours is a
-/// honeycomb.
-/// Returns every seed, and how many of them at the front of the list become
-/// pieces. The rest are ghosts.
-fn scatter(min: Vec2, max: Vec2, count: usize, rng: &mut impl Rng) -> (Vec<Vec2>, usize) {
-    let area = max - min;
-    let aspect = area.x / area.y.max(1.0);
-
-    let mut columns = ((count as f32 * aspect).sqrt().round() as usize).max(1);
-    let mut rows = (count + columns - 1) / columns;
-    if columns * rows < count {
-        columns += 1;
-        rows = (count + columns - 1) / columns;
-    }
-
-    let step = Vec2::new(area.x / columns as f32, area.y / rows as f32);
-
-    let mut slots: Vec<(isize, isize)> = (0..rows as isize)
-        .flat_map(|row| (0..columns as isize).map(move |column| (column, row)))
-        .collect();
-
-    // Dropping the surplus slots at random is deliberate: the cells left next
-    // to a hole grow into it, which is where the bigger pieces come from.
-    slots.shuffle(rng);
-    slots.truncate(count);
-    let playable = slots.len();
-
-    // A ring of seeds outside the area. They never become pieces; they exist so
-    // that the cells along the edge are bounded by a bisector against a
-    // neighbour rather than by the frame. Without them almost every cell on a
-    // board this small is a frame-clipped quadrilateral, which is the grid look
-    // this layout exists to avoid.
-    for row in -1..=rows as isize {
-        for column in -1..=columns as isize {
-            let outside = row < 0
-                || column < 0
-                || row >= rows as isize
-                || column >= columns as isize;
-
-            if outside {
-                slots.push((column, row));
-            }
-        }
-    }
-
-    let seeds = slots
-        .into_iter()
-        .map(|(column, row)| {
-            let stagger = if row.rem_euclid(2) == 1 { 0.5 } else { 0.0 };
-            let slot = min
-                + Vec2::new(column as f32 + 0.5 + stagger, row as f32 + 0.5) * step;
-
-            // Less sideways wander than vertical: a seed that crosses into the
-            // column next door undoes the interlock the stagger just created.
-            slot + Vec2::new(
-                rng.gen_range(-JITTER * 0.6..JITTER * 0.6) * step.x,
-                rng.gen_range(-JITTER..JITTER) * step.y,
-            )
+/// The six corners of a pointy-top hexagon, counter-clockwise from the top.
+fn hexagon(radius: f32) -> Vec<Vec2> {
+    (0..6)
+        .map(|corner| {
+            let angle = std::f32::consts::FRAC_PI_2 + corner as f32 * std::f32::consts::FRAC_PI_3;
+            Vec2::new(radius * angle.cos(), radius * angle.sin())
         })
-        .collect();
-
-    (seeds, playable)
+        .collect()
 }
 
-/// Sutherland–Hodgman: keeps the part of a convex polygon on the near side of
-/// a line, defined as `point · normal <= offset`.
-fn clip(polygon: &[Vec2], normal: Vec2, offset: f32) -> Vec<Vec2> {
-    let mut result = Vec::with_capacity(polygon.len() + 1);
+/// The lattice coordinates touching `(column, row)`.
+///
+/// Odd rows carry both the half-cell shift and one fewer cell, so which
+/// neighbours a cell has depends on the parity of its row. Getting this wrong
+/// does not crash anything — it quietly produces patterns whose "blobs" are not
+/// actually connected.
+pub fn neighbours(column: usize, row: usize) -> [(isize, isize); 6] {
+    let column = column as isize;
+    let row = row as isize;
 
-    for index in 0..polygon.len() {
-        let current = polygon[index];
-        let next = polygon[(index + 1) % polygon.len()];
-
-        let current_distance = current.dot(normal) - offset;
-        let next_distance = next.dot(normal) - offset;
-
-        if current_distance <= 0.0 {
-            result.push(current);
-        }
-
-        // The edge crosses the line, so the crossing point is a new corner.
-        if (current_distance > 0.0) != (next_distance > 0.0) {
-            let span = current_distance - next_distance;
-            if span.abs() > f32::EPSILON {
-                result.push(current + (next - current) * (current_distance / span));
-            }
-        }
+    if row % 2 == 0 {
+        [
+            (column - 1, row),
+            (column + 1, row),
+            (column - 1, row - 1),
+            (column, row - 1),
+            (column - 1, row + 1),
+            (column, row + 1),
+        ]
+    } else {
+        [
+            (column - 1, row),
+            (column + 1, row),
+            (column, row - 1),
+            (column + 1, row - 1),
+            (column, row + 1),
+            (column + 1, row + 1),
+        ]
     }
-
-    result
-}
-
-/// Moves every edge of a convex polygon inward by `amount`.
-fn shrink(polygon: &[Vec2], amount: f32) -> Vec<Vec2> {
-    let mut result = polygon.to_vec();
-
-    for index in 0..polygon.len() {
-        let a = polygon[index];
-        let b = polygon[(index + 1) % polygon.len()];
-        let edge = b - a;
-
-        // Outward normal of a counter-clockwise edge.
-        let normal = Vec2::new(edge.y, -edge.x);
-        let length = normal.length();
-        if length <= f32::EPSILON {
-            continue;
-        }
-
-        let normal = normal / length;
-        result = clip(&result, normal, a.dot(normal) - amount);
-
-        if result.len() < 3 {
-            return result;
-        }
-    }
-
-    result
-}
-
-fn centroid(polygon: &[Vec2]) -> Vec2 {
-    polygon.iter().fold(Vec2::ZERO, |sum, corner| sum + *corner) / polygon.len() as f32
-}
-
-/// Distance from `centre` to the nearest edge — how much room the piece really
-/// offers a thumb, as opposed to how wide its bounding box is.
-fn inradius(polygon: &[Vec2], centre: Vec2) -> f32 {
-    let mut nearest = f32::MAX;
-
-    for index in 0..polygon.len() {
-        let a = polygon[index];
-        let b = polygon[(index + 1) % polygon.len()];
-        let edge = b - a;
-        let length = edge.length();
-
-        if length <= f32::EPSILON {
-            continue;
-        }
-
-        let distance = ((b.x - a.x) * (a.y - centre.y) - (a.x - centre.x) * (b.y - a.y)).abs()
-            / length;
-        nearest = nearest.min(distance);
-    }
-
-    nearest
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn rng() -> StdRng {
-        StdRng::seed_from_u64(8_2026)
-    }
-
-    const MIN: Vec2 = Vec2::new(-180.0, -300.0);
-    const MAX: Vec2 = Vec2::new(180.0, 260.0);
+    const MIN: Vec2 = Vec2::new(-179.0, -290.0);
+    const MAX: Vec2 = Vec2::new(179.0, 262.0);
 
     fn corners_in_world(piece: &Piece) -> Vec<Vec2> {
-        piece.corners.iter().map(|corner| *corner + piece.centre).collect()
+        piece
+            .corners
+            .iter()
+            .map(|corner| *corner + piece.centre)
+            .collect()
     }
 
-    /// Two pieces sharing space would give the player a tap that belongs to
-    /// both, and a hidden piece partly covered by a visible one.
+    /// Distance from the centre to the nearest edge — what the thumb actually
+    /// gets, as opposed to how wide the bounding box is.
+    fn inradius(piece: &Piece) -> f32 {
+        let corners = &piece.corners;
+        let mut nearest = f32::MAX;
+
+        for index in 0..corners.len() {
+            let a = corners[index];
+            let b = corners[(index + 1) % corners.len()];
+            let edge = b - a;
+            let length = edge.length();
+            if length <= f32::EPSILON {
+                continue;
+            }
+            nearest = nearest.min((edge.x * -a.y - -a.x * edge.y).abs() / length);
+        }
+
+        nearest
+    }
+
+    /// Two pieces sharing space would give the player a tap belonging to both.
     #[test]
     fn pieces_never_overlap() {
-        let mut rng = rng();
-
-        for count in 6..=14 {
-            let pieces = layout(MIN, MAX, count, &mut rng);
+        for columns in MIN_COLUMNS..=MAX_COLUMNS {
+            let pieces = layout(MIN, MAX, columns);
 
             for (index, piece) in pieces.iter().enumerate() {
                 for other in pieces.iter().skip(index + 1) {
+                    assert!(!other.contains(piece.centre), "{} columns", columns);
                     for corner in corners_in_world(piece) {
                         assert!(
                             !other.contains(corner),
-                            "a corner of one piece is inside another"
+                            "{} columns: a corner sits inside another piece",
+                            columns
                         );
                     }
-                    assert!(!other.contains(piece.centre));
-                    assert!(!piece.contains(other.centre));
                 }
             }
         }
@@ -365,79 +247,130 @@ mod tests {
 
     #[test]
     fn pieces_stay_inside_the_area() {
-        let mut rng = rng();
-
-        for piece in layout(MIN, MAX, 12, &mut rng) {
-            for corner in corners_in_world(&piece) {
-                assert!(corner.x >= MIN.x - 0.5 && corner.x <= MAX.x + 0.5, "{:?}", corner);
-                assert!(corner.y >= MIN.y - 0.5 && corner.y <= MAX.y + 0.5, "{:?}", corner);
-            }
-        }
-    }
-
-    /// Every piece has to be worth aiming at, because any of them may be the
-    /// one the player cannot see.
-    #[test]
-    fn pieces_stay_tappable() {
-        let mut rng = rng();
-
-        for piece in layout(MIN, MAX, 14, &mut rng) {
-            let world = corners_in_world(&piece);
-            assert!(
-                inradius(&world, piece.centre) >= MIN_INRADIUS - 0.5,
-                "{:?} is too thin to aim at",
-                piece
-            );
-            assert!(piece.contains(piece.centre));
-        }
-    }
-
-    /// The pieces are a honeycomb, not a grid.
-    ///
-    /// This is the test that catches the layout quietly regressing into
-    /// quadrilaterals — which is what happens without the staggered rows, or
-    /// without the ring of seeds outside the frame. Measured across many
-    /// boards, four-sided pieces sit near 4%; the bar is set well clear of
-    /// that so it fails on a real change and not on the dice.
-    #[test]
-    fn pieces_are_many_sided() {
-        let mut rng = rng();
-        let mut many_sided = 0;
-        let mut total = 0;
-
-        for _ in 0..60 {
-            for piece in layout(MIN, MAX, 12, &mut rng) {
-                total += 1;
-                if piece.corners.len() >= 5 {
-                    many_sided += 1;
+        for columns in MIN_COLUMNS..=MAX_COLUMNS {
+            for piece in layout(MIN, MAX, columns) {
+                for corner in corners_in_world(&piece) {
+                    assert!(corner.x >= MIN.x - 0.5 && corner.x <= MAX.x + 0.5);
+                    assert!(corner.y >= MIN.y - 0.5 && corner.y <= MAX.y + 0.5);
                 }
             }
         }
-
-        assert!(
-            many_sided * 100 >= total * 80,
-            "only {} of {} pieces have five or more sides",
-            many_sided,
-            total
-        );
     }
 
-    /// No two rounds put pieces in the same places, and a round's pieces are
-    /// not all the same size.
+    /// The whole point of a regular lattice: the field the eye differences
+    /// against is uniform, so every cell has to be the same hexagon.
     #[test]
-    fn the_layout_is_irregular() {
-        let mut rng = rng();
+    fn every_piece_is_the_same_hexagon() {
+        for columns in MIN_COLUMNS..=MAX_COLUMNS {
+            let pieces = layout(MIN, MAX, columns);
+            let first = pieces.first().expect("a board has pieces").corners.clone();
 
-        let first = layout(MIN, MAX, 9, &mut rng);
-        let second = layout(MIN, MAX, 9, &mut rng);
-        assert_ne!(first, second, "two rounds produced the same board");
+            for piece in &pieces {
+                assert_eq!(piece.corners.len(), 6);
 
-        let widths: Vec<f32> = first.iter().map(|piece| piece.half_extents().x).collect();
-        let spread = widths.iter().cloned().fold(f32::MIN, f32::max)
-            - widths.iter().cloned().fold(f32::MAX, f32::min);
+                for (corner, expected) in piece.corners.iter().zip(&first) {
+                    assert!(
+                        (*corner - *expected).length() < 1e-3,
+                        "{} columns: pieces are not congruent",
+                        columns
+                    );
+                }
 
-        assert!(spread > 10.0, "pieces are all but the same size: {:?}", widths);
+                // Equal sides, not merely six of them.
+                let sides: Vec<f32> = (0..6)
+                    .map(|index| (piece.corners[(index + 1) % 6] - piece.corners[index]).length())
+                    .collect();
+                let longest = sides.iter().cloned().fold(f32::MIN, f32::max);
+                let shortest = sides.iter().cloned().fold(f32::MAX, f32::min);
+                assert!(longest - shortest < 1e-3, "sides are uneven: {:?}", sides);
+            }
+        }
+    }
+
+    /// Neighbours must be mutual. A one-sided neighbour list produces "blobs"
+    /// that are not connected, which is invisible until the board looks wrong.
+    #[test]
+    fn neighbours_are_symmetric() {
+        let pieces = layout(MIN, MAX, 8);
+        let present: std::collections::HashSet<(usize, usize)> =
+            pieces.iter().map(|piece| (piece.column, piece.row)).collect();
+
+        for piece in &pieces {
+            for (column, row) in neighbours(piece.column, piece.row) {
+                if column < 0 || row < 0 {
+                    continue;
+                }
+                let neighbour = (column as usize, row as usize);
+                if !present.contains(&neighbour) {
+                    continue;
+                }
+
+                let back = neighbours(neighbour.0, neighbour.1);
+                assert!(
+                    back.contains(&(piece.column as isize, piece.row as isize)),
+                    "{:?} lists {:?} but not the other way round",
+                    (piece.column, piece.row),
+                    neighbour
+                );
+            }
+        }
+    }
+
+    /// Neighbours must also be *adjacent in space*, not just in the index
+    /// arithmetic — this is what catches an off-by-one in the odd-row shift.
+    #[test]
+    fn neighbours_actually_touch() {
+        let pieces = layout(MIN, MAX, 8);
+        let by_cell: std::collections::HashMap<(usize, usize), &Piece> = pieces
+            .iter()
+            .map(|piece| ((piece.column, piece.row), piece))
+            .collect();
+
+        let step = {
+            let a = by_cell[&(0, 0)];
+            let b = by_cell[&(1, 0)];
+            (b.centre - a.centre).length()
+        };
+
+        for piece in &pieces {
+            for (column, row) in neighbours(piece.column, piece.row) {
+                if column < 0 || row < 0 {
+                    continue;
+                }
+                let Some(other) = by_cell.get(&(column as usize, row as usize)) else {
+                    continue;
+                };
+
+                let distance = (other.centre - piece.centre).length();
+                assert!(
+                    (distance - step).abs() < step * 0.05,
+                    "{:?} and {:?} are {} apart, not {}",
+                    (piece.column, piece.row),
+                    (column, row),
+                    distance,
+                    step
+                );
+            }
+        }
+    }
+
+    /// A board that fills the screen. Sixteen columns on a phone puts the cells
+    /// under the 48px touch guideline — that is a deliberate trade, and this
+    /// test records where the floor actually is so a change to the geometry
+    /// cannot lower it silently.
+    #[test]
+    fn cells_keep_a_usable_size() {
+        let coarse = layout(MIN, MAX, MIN_COLUMNS);
+        assert!(inradius(&coarse[0]) > 30.0);
+
+        let dense = layout(MIN, MAX, MAX_COLUMNS);
+        assert!(
+            inradius(&dense[0]) > 8.0,
+            "sixteen columns leaves an inradius of {}",
+            inradius(&dense[0])
+        );
+
+        // And the board is worth calling a board.
+        assert!(dense.len() > 200, "only {} cells at 16 columns", dense.len());
     }
 }
-
-
