@@ -440,7 +440,23 @@ twice for one mistake.
   its autoplay warning at startup; that part is unavoidable in 0.10.
 - Sounds live in `assets/sfx/` and are **synthesised** by `tools/make_sounds.py` (pure
   stdlib, no dependencies) so the repo owns them outright — nothing to re-source, no
-  licence to track. Regenerate rather than hand-editing the WAVs.
+  licence to track. Regenerate rather than hand-editing the WAVs. That includes the
+  two music loops: `theme.wav` (menu, 12s) and `round.wav` (a round, 20s), built from a
+  small additive synth in the same file. `Track.add` writes with **wraparound**, so a
+  chord still ringing at the end becomes the sound already playing when the loop
+  restarts — without it the seam clicks once per repeat. The round track has **no
+  melody** on purpose: a line with a shape to follow competes for the attention the
+  board needs.
+- **Music is reconciled, not triggered.** `audio.rs::reconcile_music` computes the
+  wanted track each frame from `AppState` and `Muted` and switches if it differs — one
+  system covering both screen changes and the mute button, with no ordering between
+  them. Two Bevy 0.10 traps, both silent rather than compile errors:
+  `play_with_settings` returns a **weak** handle and `AudioSink::drop` calls `detach()`,
+  so letting a *looping* handle go means music forever with nothing able to stop it —
+  upgrade with `sinks.get_handle(...)` immediately and hold it in a resource. And the
+  sink asset does not exist until `play_queued_audio_system` has run, so `sinks.get`
+  returns `None` for a frame or two; a stop must keep retrying (`Music::stopping`)
+  rather than fire once.
 
 ### Visual language
 
