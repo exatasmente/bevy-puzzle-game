@@ -434,6 +434,16 @@ twice for one mistake.
   `AudioBundle`, which every current example and every LLM reaches for, arrived in 0.12
   and does not exist here. `Cargo.toml` enables the `wav` feature — the default set is
   Ogg only.
+- **On iOS the side switch silences the game, and nothing in the page reports it.**
+  Web Audio runs under the "ambient" audio session by default, so an iPhone with the
+  Ring/Silent switch set to silent plays nothing — no error, no console warning, no
+  difference in the `AudioContext` state, which still reads `running`. It is
+  indistinguishable from a broken build by every measurement available from inside the
+  page, and it cost a real round of debugging. Check the switch before suspecting the
+  code. Safari 16.4+ can override it with `navigator.audioSession.type = 'playback'`,
+  but that is deliberately **not** done here: respecting the switch is what the platform
+  asks of a game, and a puzzle played in public is exactly the case the switch exists
+  for.
 - **The browser needs the shim in `docs/index.html` to make any sound at all.** Chrome
   builds an `AudioContext` created before a user gesture in the `suspended` state and
   leaves it there until something calls `resume()` from inside a gesture handler. Bevy
