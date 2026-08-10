@@ -492,31 +492,40 @@ twice for one mistake.
   *before* the writer in the very frame the value changes — and the flag is only set for
   that one frame, so the label never catches up. `update_sound_label` compares the string
   instead, which is immune to the ordering and still avoids re-laying out the text.
-- **KNOWN BUG: the browser stops presenting new frames on the pause and game-over
-  screens.** This is what makes pagination, "menu principal" and "reiniciar" look like
-  the game has hung. Native is unaffected.
+- **KNOWN BUG: the pause and game-over screens do not repaint in the browser.** This is
+  what makes pagination, "menu principal" and "reiniciar" look like the game has hung.
+  Native is unaffected.
 
-  What is established, by reading the canvas rather than by screenshots — force
-  `preserveDrawingBuffer: true` in a `getContext` shim and hash `readPixels`, because a
-  WebGL canvas without it can hand back a stale buffer to both `readPixels` *and* a
-  browser screenshot:
+  It is confined to `History` and `GameOverResume`, and it is not permanent: the main
+  menu repaints, a round repaints, and going *back* to a round from the pause screen
+  repaints again. Only those two states are stuck, and only their picture — the ECS runs
+  at a full 61 updates a second inside them.
 
-  - The **whole canvas** is byte-identical across seconds on those screens, and across a
-    hover. During a round's sweep it changes between samples, which is the positive
-    control that the measurement works.
-  - The app is **not** dead: pressing the volume button still cycles it and the sound
-    audibly changes, so input, the ECS and the audio systems all keep running.
-  - Draw calls keep being issued at 15–60/s, so the renderer runs and redraws unchanged
-    data rather than stopping.
+  **The main world is provably healthy while the picture is frozen.** In `History`,
+  measured from inside the running wasm: `UiStack` holds all ten nodes, the button's
+  `ComputedVisibility` is true, its `Node` size and `GlobalTransform` are correct, and a
+  system that rewrites its `BackgroundColor` every frame changes nothing on screen. The
+  volume label likewise steps 100% → 75% → … → DESLIGADO in the ECS while the pixels
+  never move. Everything `extract_uinodes` reads is right; the drawing does not follow.
 
-  Ruled out, each by building and measuring: `ZIndex::Local` versus `Global`; the `SCRIM`
-  colour and its alpha (an opaque background freezes the same way); and building the
-  panel from `OnEnter` instead of the `PostUpdate` event system. It is **not** a
-  regression from the audio work — the same control test freezes identically on
-  `e444e91`, which predates all of it.
+  Ruled out, each by building and measuring: `ZIndex::Local`, `ZIndex::Global`, and no
+  `ZIndex` at all; `PositionType::Absolute` on the root; and the `SCRIM` colour — with an
+  opaque background and the root made structurally identical to the main menu's, it still
+  does not repaint. It is not a regression from the audio work either: `e444e91` freezes
+  identically.
 
-  Next thing to try: whether `UiSystem::Flex`/`text_system` still run in those states, by
-  animating a node's `Style` rather than its text or colour.
+  **How to measure this without lying to yourself.** Pixels and audio are both poor
+  channels here — a WebGL canvas without `preserveDrawingBuffer` can hand back a stale
+  buffer to `readPixels` *and* to a browser screenshot, so force that flag in a
+  `getContext` shim. Better still, mirror the state you care about out of Rust with
+  `storage::save`, which reaches `localStorage` on wasm and goes through neither the
+  renderer nor the audio device. And validate any observation tool against a change you
+  know happens — the one-second sweep at the start of a round — before trusting a
+  negative result; sampling the sweep too late reports "frozen" for a screen that is
+  fine.
+
+  Next: the fault is somewhere between the render app's extraction and the surface, so
+  the remaining suspects are the render graph and wgpu's WebGL surface, not the UI tree.
 - **`std::time::SystemTime::now()` panics on `wasm32-unknown-unknown`.** It is fine
   natively, so it compiles and passes tests and then takes the web build down at the line
   that calls it — which, since a wasm panic just stops the frame loop, looks exactly like
