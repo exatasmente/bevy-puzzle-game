@@ -122,22 +122,22 @@ pub fn interact_with_end_run_button(
     }
 }
 
-/// Silences the game, or lets it speak again.
+/// Steps the volume down, wrapping round to full from off.
 pub fn interact_with_sound_toggle(
     mut button_query: Query<
         (&Interaction, &mut BackgroundColor),
         (Changed<Interaction>, With<SoundToggleButton>),
     >,
-    mut muted: ResMut<crate::audio::Muted>,
-    mut spawn_pagination_event_writer: EventWriter<SpawnPaginationEvent>,
+    mut volume: ResMut<crate::audio::Volume>,
 ) {
     for (interaction, mut color) in button_query.iter_mut() {
         match *interaction {
             Interaction::Clicked => {
                 *color = BUTTON_PRESSED.into();
-                muted.toggle();
-                // The label carries the state, so the list is rebuilt to show it.
-                spawn_pagination_event_writer.send(SpawnPaginationEvent);
+                volume.cycle();
+                // `update_sound_label` writes the new reading into the existing
+                // text. This used to rebuild the whole screen instead, which
+                // showed nothing at all on the web — see `SoundToggleLabel`.
             }
             Interaction::Hovered => *color = BUTTON_HOVERED.into(),
             Interaction::None => *color = BUTTON.into(),

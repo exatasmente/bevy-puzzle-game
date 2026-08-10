@@ -32,6 +32,9 @@ use crate::feedback::BannerEvent;
 use crate::storage;
 use crate::AppState;
 
+const VOLUME_KEY: &str = "color_puzzle.volume";
+/// The key the setting used before it had steps. Read once, so a player who
+/// muted the game in an older build stays muted.
 const MUTED_KEY: &str = "color_puzzle.muted";
 
 /// Both tracks sit under the effects on purpose: the music is there so silence
@@ -43,32 +46,74 @@ pub struct GameAudioPlugin;
 
 impl Plugin for GameAudioPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<Muted>()
+        app.init_resource::<Volume>()
             .init_resource::<Music>()
             .add_startup_system(load_sounds)
             .add_system(play_pick_sounds)
             .add_system(play_level_sound)
-            .add_system(reconcile_music);
+            .add_system(reconcile_music)
+            .add_system(follow_volume);
     }
 }
 
-/// Whether the player has silenced the game. Persisted, because a player who
-/// muted a game once meant it.
-#[derive(Resource, Default)]
-pub struct Muted(bool);
+/// How loud the game is, in steps. Persisted, because a player who turned the
+/// sound down once meant it.
+///
+/// Steps rather than a continuous slider: Bevy 0.10's UI has no slider, and one
+/// button that cycles is both easier to hit on a phone than a drag target and
+/// honest about how little precision anyone wants here. Zero is off, which is
+/// what the old mute toggle was — so the setting grew steps rather than gaining
+/// a second control that could disagree with it.
+#[derive(Resource)]
+pub struct Volume(u8);
 
-impl Muted {
-    pub fn is_muted(&self) -> bool {
-        self.0
+/// Off, and then four steps up to full.
+pub const VOLUME_STEPS: u8 = 4;
+
+impl Default for Volume {
+    fn default() -> Self {
+        Self(VOLUME_STEPS)
+    }
+}
+
+impl Volume {
+    /// The multiplier every sound in the game is scaled by.
+    pub fn scale(&self) -> f32 {
+        self.0 as f32 / VOLUME_STEPS as f32
     }
 
-    pub fn toggle(&mut self) {
-        self.0 = !self.0;
-        storage::save(MUTED_KEY, if self.0 { "1" } else { "0" });
+    pub fn is_silent(&self) -> bool {
+        self.0 == 0
+    }
+
+    /// Steps down, wrapping back to full from off, so one button covers the
+    /// whole range in either direction of travel the player imagines.
+    pub fn cycle(&mut self) {
+        self.0 = if self.0 == 0 { VOLUME_STEPS } else { self.0 - 1 };
+        storage::save(VOLUME_KEY, &self.0.to_string());
+    }
+
+    /// The pause screen's label. ASCII only — the display font has no accents.
+    pub fn label(&self) -> String {
+        if self.is_silent() {
+            "SOM: DESLIGADO".to_string()
+        } else {
+            format!("SOM: {}%", (self.scale() * 100.0).round() as u32)
+        }
     }
 
     pub fn load() -> Self {
-        Self(storage::load(MUTED_KEY).as_deref() == Some("1"))
+        if let Some(level) = storage::load(VOLUME_KEY).and_then(|v| v.parse::<u8>().ok()) {
+            return Self(level.min(VOLUME_STEPS));
+        }
+
+        // Nothing saved under the new key: honour the old mute flag once, so
+        // the setting survives the upgrade instead of coming back at full.
+        if storage::load(MUTED_KEY).as_deref() == Some("1") {
+            return Self(0);
+        }
+
+        Self::default()
     }
 }
 
@@ -81,8 +126,8 @@ pub struct Sounds {
     round: Handle<AudioSource>,
 }
 
-fn load_sounds(mut commands: Commands, asset_server: Res<AssetServer>, mut muted: ResMut<Muted>) {
-    *muted = Muted::load();
+fn load_sounds(mut commands: Commands, asset_server: Res<AssetServer>, mut volume: ResMut<Volume>) {
+    *volume = Volume::load();
 
     commands.insert_resource(Sounds {
         hit: asset_server.load("sfx/hit.wav"),
@@ -110,13 +155,18 @@ pub struct Music {
     stopping: Vec<Handle<AudioSink>>,
 }
 
-/// Keeps the music matching the screen and the mute setting.
+/// Keeps the music matching the screen and the volume setting.
 ///
 /// One reconciling system rather than a pair of `OnEnter`/`OnExit` handlers per
 /// state: the track depends on two things that change independently — which
-/// screen is up and whether the player has muted — and reconciling covers both
-/// without any ordering between them. Muting stops the music; unmuting starts
-/// it again on whatever screen the player is now on.
+/// screen is up and whether the sound is off — and reconciling covers both
+/// without any ordering between them. Turning the sound off stops the music;
+/// turning it back up starts it again on whatever screen the player is now on.
+///
+/// Only *silence* is handled here. Every other volume change is a change to a
+/// track that is already playing, and restarting the music from the top every
+/// time someone taps the button would be worse than not having the button —
+/// `follow_volume` adjusts the sink in place instead.
 ///
 /// Two details of Bevy 0.10's audio are load bearing here, and both are quiet
 /// failures rather than compile errors:
@@ -135,7 +185,7 @@ fn reconcile_music(
     audio: Res<Audio>,
     sinks: Res<Assets<AudioSink>>,
     sounds: Option<Res<Sounds>>,
-    muted: Res<Muted>,
+    volume: Res<Volume>,
     app_state: Res<State<AppState>>,
     mut music: ResMut<Music>,
 ) {
@@ -152,7 +202,7 @@ fn reconcile_music(
         None => true,
     });
 
-    let wanted = if muted.is_muted() {
+    let wanted = if volume.is_silent() {
         None
     } else if app_state.0 == AppState::Game {
         Some(Track::Round)
@@ -172,21 +222,59 @@ fn reconcile_music(
         return;
     };
 
-    let (source, volume) = match track {
+    let (source, level) = match track {
         Track::Theme => (sounds.theme.clone(), THEME_VOLUME),
         Track::Round => (sounds.round.clone(), ROUND_VOLUME),
     };
 
     let handle = sinks.get_handle(
-        audio.play_with_settings(source, PlaybackSettings::LOOP.with_volume(volume)),
+        audio.play_with_settings(
+            source,
+            PlaybackSettings::LOOP.with_volume(level * volume.scale()),
+        ),
     );
     music.playing = Some((track, handle));
+}
+
+/// Follows the volume setting on the music that is already playing.
+///
+/// Changing a track's level has to happen on the live sink: the alternative is
+/// stopping and starting it, which drops the player back to the beginning of the
+/// loop every time they tap the button.
+///
+/// `Changed<Volume>` alone is not enough, because the sink asset can arrive a
+/// frame or two *after* the change; the level is therefore reapplied until it
+/// takes, which is what `applied` tracks.
+fn follow_volume(
+    sinks: Res<Assets<AudioSink>>,
+    volume: Res<Volume>,
+    music: Res<Music>,
+    mut applied: Local<Option<f32>>,
+) {
+    let Some((track, handle)) = music.playing.as_ref() else {
+        *applied = None;
+        return;
+    };
+
+    let level = match track {
+        Track::Theme => THEME_VOLUME,
+        Track::Round => ROUND_VOLUME,
+    } * volume.scale();
+
+    if *applied == Some(level) {
+        return;
+    }
+
+    if let Some(sink) = sinks.get(handle) {
+        sink.set_volume(level);
+        *applied = Some(level);
+    }
 }
 
 fn play_pick_sounds(
     audio: Res<Audio>,
     sounds: Option<Res<Sounds>>,
-    muted: Res<Muted>,
+    volume: Res<Volume>,
     mut events: EventReader<InteractionAnimationEvent>,
 ) {
     let Some(sounds) = sounds else {
@@ -196,7 +284,7 @@ fn play_pick_sounds(
     // Read every event, not just the first: two picks in one frame should not
     // leave one of them silent.
     for event in events.iter() {
-        if muted.is_muted() {
+        if volume.is_silent() {
             continue;
         }
 
@@ -206,14 +294,14 @@ fn play_pick_sounds(
             sounds.miss.clone()
         };
 
-        audio.play_with_settings(sound, PlaybackSettings::ONCE.with_volume(0.85));
+        audio.play_with_settings(sound, PlaybackSettings::ONCE.with_volume(0.85 * volume.scale()));
     }
 }
 
 fn play_level_sound(
     audio: Res<Audio>,
     sounds: Option<Res<Sounds>>,
-    muted: Res<Muted>,
+    volume: Res<Volume>,
     mut events: EventReader<BannerEvent>,
 ) {
     let Some(sounds) = sounds else {
@@ -221,11 +309,11 @@ fn play_level_sound(
     };
 
     for _ in events.iter() {
-        if muted.is_muted() {
+        if volume.is_silent() {
             continue;
         }
 
         // The banner is only ever a level up now, so it needs no filtering.
-        audio.play_with_settings(sounds.level.clone(), PlaybackSettings::ONCE.with_volume(0.9));
+        audio.play_with_settings(sounds.level.clone(), PlaybackSettings::ONCE.with_volume(0.9 * volume.scale()));
     }
 }

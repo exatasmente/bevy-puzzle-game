@@ -144,7 +144,7 @@ src/
   board.rs                    Regular pointy-top hex lattice, uniform gaps (has tests)
   mosaic_pattern.rs           Which cells are empty and which colour blob each joins (has tests)
   oklab.rs                    Perceptual color space; the unit the difficulty is set in
-  audio.rs                    GameAudioPlugin — pick/level sounds off existing events, Muted
+  audio.rs                    GameAudioPlugin — pick/level sounds, music, Volume
   wfc.rs                      Wave function collapse; generates the Mosaic board (has tests)
   layout.rs                   RelayoutEvent: screens rebuild when the window resizes
   feedback.rs                 FeedbackPlugin — pop, floating text, screen shake, banners, reveal
@@ -447,8 +447,13 @@ twice for one mistake.
   restarts — without it the seam clicks once per repeat. The round track has **no
   melody** on purpose: a line with a shape to follow competes for the attention the
   board needs.
+- **Sound level is one setting with steps, not a mute flag.** `audio::Volume` is 0..=4;
+  0 is off, and everything the game plays is scaled by `Volume::scale()`. The pause
+  screen's one button cycles down and wraps — Bevy 0.10 has no slider, and a drag target
+  is the wrong shape for a thumb. `Volume::load` reads the old `color_puzzle.muted` key
+  once when the new one is absent, so an upgrade does not un-mute anyone.
 - **Music is reconciled, not triggered.** `audio.rs::reconcile_music` computes the
-  wanted track each frame from `AppState` and `Muted` and switches if it differs — one
+  wanted track each frame from `AppState` and `Volume` and switches if it differs — one
   system covering both screen changes and the mute button, with no ordering between
   them. Two Bevy 0.10 traps, both silent rather than compile errors:
   `play_with_settings` returns a **weak** handle and `AudioSink::drop` calls `detach()`,
@@ -456,7 +461,21 @@ twice for one mistake.
   upgrade with `sinks.get_handle(...)` immediately and hold it in a resource. And the
   sink asset does not exist until `play_queued_audio_system` has run, so `sinks.get`
   returns `None` for a frame or two; a stop must keep retrying (`Music::stopping`)
-  rather than fire once.
+  rather than fire once. Only *silence* goes through the reconciler; every other level
+  change is applied to the live sink by `follow_volume`, because stopping and restarting
+  would drop the player back to the top of the loop on every press.
+- **Do not gate a label on `Res<T>::is_changed()` when the writer is a sibling in the
+  same tuple.** Systems in a tuple run in an arbitrary order, so the reader can run
+  *before* the writer in the very frame the value changes — and the flag is only set for
+  that one frame, so the label never catches up. `update_sound_label` compares the string
+  instead, which is immune to the ordering and still avoids re-laying out the text.
+- **KNOWN BUG: the pause screen does not re-render in the browser.** Open it and the
+  picture is frozen: hover colours do not paint, and a label written by a system does not
+  change, while the ECS keeps running underneath (the volume button audibly works). It is
+  **not** a regression from the audio work — the same control test freezes identically on
+  `e444e91`, which predates it. Draw calls continue, so the renderer is running and
+  drawing stale content rather than stopping. Native is unaffected. This is what makes
+  pagination, "menu principal" and "reiniciar" look like the game has hung.
 
 ### Visual language
 
