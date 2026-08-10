@@ -469,13 +469,36 @@ twice for one mistake.
   *before* the writer in the very frame the value changes — and the flag is only set for
   that one frame, so the label never catches up. `update_sound_label` compares the string
   instead, which is immune to the ordering and still avoids re-laying out the text.
-- **KNOWN BUG: the pause screen does not re-render in the browser.** Open it and the
-  picture is frozen: hover colours do not paint, and a label written by a system does not
-  change, while the ECS keeps running underneath (the volume button audibly works). It is
-  **not** a regression from the audio work — the same control test freezes identically on
-  `e444e91`, which predates it. Draw calls continue, so the renderer is running and
-  drawing stale content rather than stopping. Native is unaffected. This is what makes
-  pagination, "menu principal" and "reiniciar" look like the game has hung.
+- **KNOWN BUG: the browser stops presenting new frames on the pause and game-over
+  screens.** This is what makes pagination, "menu principal" and "reiniciar" look like
+  the game has hung. Native is unaffected.
+
+  What is established, by reading the canvas rather than by screenshots — force
+  `preserveDrawingBuffer: true` in a `getContext` shim and hash `readPixels`, because a
+  WebGL canvas without it can hand back a stale buffer to both `readPixels` *and* a
+  browser screenshot:
+
+  - The **whole canvas** is byte-identical across seconds on those screens, and across a
+    hover. During a round's sweep it changes between samples, which is the positive
+    control that the measurement works.
+  - The app is **not** dead: pressing the volume button still cycles it and the sound
+    audibly changes, so input, the ECS and the audio systems all keep running.
+  - Draw calls keep being issued at 15–60/s, so the renderer runs and redraws unchanged
+    data rather than stopping.
+
+  Ruled out, each by building and measuring: `ZIndex::Local` versus `Global`; the `SCRIM`
+  colour and its alpha (an opaque background freezes the same way); and building the
+  panel from `OnEnter` instead of the `PostUpdate` event system. It is **not** a
+  regression from the audio work — the same control test freezes identically on
+  `e444e91`, which predates all of it.
+
+  Next thing to try: whether `UiSystem::Flex`/`text_system` still run in those states, by
+  animating a node's `Style` rather than its text or colour.
+- **`std::time::SystemTime::now()` panics on `wasm32-unknown-unknown`.** It is fine
+  natively, so it compiles and passes tests and then takes the web build down at the line
+  that calls it — which, since a wasm panic just stops the frame loop, looks exactly like
+  the freeze above. Use `Res<Time>` or a `Local` counter. This cost two misleading
+  experiments during the investigation of that bug.
 
 ### Visual language
 
