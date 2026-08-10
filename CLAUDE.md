@@ -9,8 +9,9 @@ The board is a honeycomb of **congruent regular hexagons**. Some cells are empty
 simply show the ground; the filled ones are grouped into blobs of colour, and the
 board reads as a mosaic. One filled cell wears its group's colour moved by the level's
 delta — it is the only cell on the board wearing exactly that colour, and it is the
-answer. It runs natively and in the browser via WebAssembly (a prebuilt WASM bundle is
-committed under `docs/` and served by GitHub Pages).
+answer. It runs natively and in the browser via WebAssembly, which GitHub Pages builds
+from source on every push to `master` — see the Commands section, because the committed
+`docs/` bundle is *not* what gets served.
 
 **The ground sweeps.** At the start of every round the background travels through all
 of the round's colours over one second and stops on the answer's. Each group vanishes
@@ -56,12 +57,19 @@ WASM: `.cargo/config.toml` sets `runner = "wasm-server-runner"` for
 cargo run --target wasm32-unknown-unknown
 ```
 
-The committed `docs/` bundle (`puzzle_wasm.js`, `puzzle_wasm_bg.wasm`, `index.html`,
-`assets/digital7mono.ttf`) is generated with `wasm-bindgen` using the output name
-`puzzle_wasm` and is what GitHub Pages serves. `docs/index.html` mounts the game on
-`<canvas id="canvas">`, which matches `canvas: Some("#canvas".into())` in
-`src/main.rs`. Regenerating the bundle means re-running wasm-bindgen and committing
-the new binaries; the build script for it is not in the repo.
+**GitHub Pages does not serve the committed `docs/` bundle.**
+`.github/workflows/main.yml` ("Build and Deploy WebAssembly") fires on every push to
+`master`, builds `--release --target wasm32-unknown-unknown` itself, runs `wasm-bindgen`
+(pinned to 0.2.126), then copies **`docs/index.html`** and the whole **`assets/`** tree
+next to it and publishes that. So what is deployed comes from the *source*, and the only
+committed file it actually uses is `index.html` — which is why the AudioContext shim
+lives there and matters. Verified by fetching the site: its `puzzle_wasm_bg.wasm` is
+29 MB against the 21 MB committed under `docs/`, a different build of the same code.
+
+`docs/puzzle_wasm*.{js,wasm}` are therefore dead weight — 21 MB of binaries nothing
+serves. Do not bother regenerating them to "update the site"; push to `master` instead.
+`docs/index.html` mounts the game on `<canvas id="canvas">`, which matches
+`canvas: Some("#canvas".into())` in `src/main.rs`.
 
 CI (`.github/workflows/rust.yml`) runs `cargo build --verbose` and
 `cargo test --verbose` on `macos-latest`, triggered on push/PR to `main`. Note the
@@ -450,8 +458,13 @@ twice for one mistake.
 - **Sound level is one setting with steps, not a mute flag.** `audio::Volume` is 0..=4;
   0 is off, and everything the game plays is scaled by `Volume::scale()`. The pause
   screen's one button cycles down and wraps — Bevy 0.10 has no slider, and a drag target
-  is the wrong shape for a thumb. `Volume::load` reads the old `color_puzzle.muted` key
-  once when the new one is absent, so an upgrade does not un-mute anyone.
+  is the wrong shape for a thumb. `Volume::load` **ignores** the old
+  `color_puzzle.muted` key it replaced, and that is deliberate: the old control was a
+  two-state toggle cheap to tap out of curiosity, so browsers have `muted=1` left in them
+  from a single idle press. Honouring it started the game silent, and with the pause
+  screen not repainting in the browser the reading on the button never changed either —
+  the game simply appeared to have no sound. That happened to a real player. Hearing one
+  round of music you did not want is a far smaller harm than a mute you cannot see.
 - **Music is reconciled, not triggered.** `audio.rs::reconcile_music` computes the
   wanted track each frame from `AppState` and `Volume` and switches if it differs — one
   system covering both screen changes and the mute button, with no ordering between

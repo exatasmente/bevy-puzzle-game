@@ -33,14 +33,11 @@ use crate::storage;
 use crate::AppState;
 
 const VOLUME_KEY: &str = "color_puzzle.volume";
-/// The key the setting used before it had steps. Read once, so a player who
-/// muted the game in an older build stays muted.
-const MUTED_KEY: &str = "color_puzzle.muted";
 
 /// Both tracks sit under the effects on purpose: the music is there so silence
 /// does not read as a broken build, and a hit still has to cut through it.
-const THEME_VOLUME: f32 = 0.45;
-const ROUND_VOLUME: f32 = 0.32;
+const THEME_VOLUME: f32 = 0.60;
+const ROUND_VOLUME: f32 = 0.45;
 
 pub struct GameAudioPlugin;
 
@@ -102,18 +99,26 @@ impl Volume {
         }
     }
 
+    /// Reads the saved level, and **deliberately ignores the old
+    /// `color_puzzle.muted` flag** this setting replaced.
+    ///
+    /// Carrying that flag over was the obvious courtesy and it was wrong here.
+    /// The old control was a two-state toggle that cost nothing to tap out of
+    /// curiosity, so plenty of browsers have `muted=1` sitting in them from a
+    /// single idle press. Honouring it starts the game in silence — and while
+    /// the pause screen does not repaint in the browser, the reading on the
+    /// button never changes either, so there is no way to find out why. The
+    /// game just appears to have no sound. That happened, and it is what this
+    /// comment exists to stop happening again.
+    ///
+    /// A returning player who wanted silence hears one round of music and
+    /// turns it down again, which is a far smaller harm than being stranded
+    /// with a mute they cannot see and did not mean.
     pub fn load() -> Self {
-        if let Some(level) = storage::load(VOLUME_KEY).and_then(|v| v.parse::<u8>().ok()) {
-            return Self(level.min(VOLUME_STEPS));
+        match storage::load(VOLUME_KEY).and_then(|v| v.parse::<u8>().ok()) {
+            Some(level) => Self(level.min(VOLUME_STEPS)),
+            None => Self::default(),
         }
-
-        // Nothing saved under the new key: honour the old mute flag once, so
-        // the setting survives the upgrade instead of coming back at full.
-        if storage::load(MUTED_KEY).as_deref() == Some("1") {
-            return Self(0);
-        }
-
-        Self::default()
     }
 }
 
