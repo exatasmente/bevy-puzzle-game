@@ -33,7 +33,7 @@ pub fn spawn_pagination_itens(
     asset_server: Res<AssetServer>,
     mut pagination: ResMut<Pagination>,
     mut spawn_pagination_event_reader: EventReader<SpawnPaginationEvent>,
-    muted: Res<crate::audio::Muted>,
+    volume: Res<crate::audio::Volume>,
     window_query: Query<&Window>,
 ) {
     if spawn_pagination_event_reader.iter().count() == 0 {
@@ -117,7 +117,7 @@ pub fn spawn_pagination_itens(
         if game_history.levels_played > 0 {
             build_pagination_element(&asset_server, parent, &mut pagination, width);
         }
-        build_actions(&asset_server, parent, width, muted.is_muted());
+        build_actions(&asset_server, parent, width, volume.label());
     });
 }
 
@@ -125,12 +125,14 @@ fn build_actions(
     asset_server: &Res<AssetServer>,
     parent: &mut ChildBuilder,
     width: f32,
-    muted: bool,
+    sound_label: String,
 ) {
     let text_width = theme::button_text_width(width);
 
     // The pause screen is where the mock-up put the sound control, and it is
-    // the only screen a player reaches mid-run without losing anything.
+    // the only screen a player reaches mid-run without losing anything. One
+    // button cycling down through the steps, rather than a slider: Bevy 0.10
+    // has no slider widget, and a drag target is the wrong shape for a thumb.
     parent
         .spawn((
             ButtonBundle {
@@ -141,10 +143,9 @@ fn build_actions(
             SoundToggleButton,
         ))
         .with_children(|parent| {
-            parent.spawn(theme::wrapped_text(
-                if muted { "SOM: MUDO" } else { "SOM: LIGADO" },
-                get_button_text_style(asset_server),
-                text_width,
+            parent.spawn((
+                theme::wrapped_text(sound_label, get_button_text_style(asset_server), text_width),
+                SoundToggleLabel,
             ));
         });
 
@@ -261,4 +262,33 @@ fn spawn_pagination_button(
                 theme::TOUCH_TARGET,
             ));
         });
+}
+
+/// Writes the volume into the button's label without rebuilding the screen.
+///
+/// The screen used to be rebuilt on every press, which worked natively and did
+/// nothing visible on the web: a `Text` despawned and respawned in the same
+/// frame goes on rendering its old glyphs there, so the reading stayed at 100%
+/// while the sound was plainly getting quieter. Writing the value into the
+/// existing text avoids the teardown altogether, and is what a one-word change
+/// deserved in the first place.
+pub fn update_sound_label(
+    volume: Res<crate::audio::Volume>,
+    mut query: Query<&mut Text, With<SoundToggleLabel>>,
+) {
+    // Deliberately not gated on `volume.is_changed()`. Systems in a tuple run
+    // in an arbitrary order, so this one can run *before* the button handler in
+    // the very frame the value changes — and since the flag is only set for
+    // that one frame, the label would then never catch up. Comparing the string
+    // is immune to the ordering, and still writes only when it differs, which is
+    // what keeps Bevy from re-laying out the text every frame.
+    let label = volume.label();
+
+    for mut text in query.iter_mut() {
+        if let Some(section) = text.sections.first_mut() {
+            if section.value != label {
+                section.value = label.clone();
+            }
+        }
+    }
 }
