@@ -9,6 +9,7 @@ use bevy::prelude::*;
 use crate::feedback::PopAnim;
 use crate::game::puzzle::components::{ColorPuzzle, GameHistory, GameTimer};
 use crate::game::ui::hud::components::*;
+use crate::game::ui::hud::styles::LIVES_PIP_SPENT_COLOR;
 use crate::theme;
 
 /// Seconds left at which the timer starts warning.
@@ -131,6 +132,61 @@ pub fn update_timer_text(
     } else {
         theme::INFO
     };
+}
+
+/// Lights the first `lives` markers and dims the rest.
+///
+/// Deliberately not a banner. A miss already holds the board so the answer can
+/// be shown, and a caption thrown across the middle of the screen would cover
+/// exactly the thing the hold exists to reveal — the same reason the streak
+/// messages were taken out. The last life announces itself by pulsing in the
+/// HUD instead, where it is out of the board's way.
+pub fn update_lives_pips(
+    mut commands: Commands,
+    puzzle: Res<ColorPuzzle>,
+    time: Res<Time>,
+    mut last_lives: Local<Option<usize>>,
+    mut query: Query<(Entity, &LivesPip, &mut BackgroundColor)>,
+) {
+    let lives = puzzle.lives();
+
+    // The marker that just went out is the one at the new count, counting from
+    // zero. Punching it is what makes the loss register as an event rather than
+    // as a square that was always that colour.
+    let just_lost = match *last_lives {
+        Some(previous) if lives < previous => Some(lives),
+        _ => None,
+    };
+
+    if *last_lives != Some(lives) {
+        *last_lives = Some(lives);
+    }
+
+    let critical = lives == 1;
+
+    for (entity, pip, mut color) in query.iter_mut() {
+        if pip.index >= lives {
+            *color = LIVES_PIP_SPENT_COLOR.into();
+
+            if just_lost == Some(pip.index) {
+                commands.entity(entity).insert(PopAnim::small());
+            }
+
+            continue;
+        }
+
+        *color = if critical {
+            let pulse = (time.elapsed_seconds() * 12.0).sin() * 0.5 + 0.5;
+            Color::rgb(
+                theme::DANGER.r(),
+                theme::DANGER.g() * (0.4 + 0.6 * pulse),
+                theme::DANGER.b() * (0.4 + 0.6 * pulse),
+            )
+        } else {
+            theme::DANGER
+        }
+        .into();
+    }
 }
 
 pub fn update_level_progress(

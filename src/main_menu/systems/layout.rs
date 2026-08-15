@@ -149,7 +149,18 @@ pub fn build_main_menu(
             // Offered first, and only when there is a run worth coming back
             // to: a player who left mid-run is here to finish it, not to read
             // the mode list again.
-            if let Some((game_mode, score)) = resume {
+            if let Some(run) = resume {
+                let game_mode = run.game_mode;
+
+                // The lives are part of what the player is coming back to, so
+                // the card says how many are left rather than making the
+                // resumed run reveal it.
+                let footnote = if game_mode.starting_lives().is_some() {
+                    format!("PONTOS: {} - VIDAS: {}", run.score, run.lives)
+                } else {
+                    format!("PONTOS: {}", run.score)
+                };
+
                 spawn_card(
                     parent,
                     asset_server,
@@ -159,9 +170,13 @@ pub fn build_main_menu(
                     chip_size,
                     text_width,
                     "CONTINUAR",
-                    &format!("{} - NIVEL {}", game_mode.as_str().to_uppercase(), level_for_score(score)),
-                    Some(format!("PONTOS: {}", score)),
-                    ContinueRunButton { game_mode, score },
+                    &format!("{} - NIVEL {}", game_mode.as_str().to_uppercase(), level_for_score(run.score)),
+                    Some(footnote),
+                    ContinueRunButton {
+                        game_mode,
+                        score: run.score,
+                        lives: run.lives,
+                    },
                 );
             }
 

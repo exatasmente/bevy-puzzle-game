@@ -81,10 +81,15 @@ pub const PROGRESS_FILL_STYLE: Style = Style {
     ..Style::DEFAULT
 };
 
+/// The level on the left, the lives on the right.
+///
+/// `SpaceBetween` rather than `FlexStart` because the row now has two ends. It
+/// reads the same as before in a timed mode, where the lives are not spawned
+/// and a single child stays where it was.
 pub const LEVEL_ROW_STYLE: Style = Style {
     size: Size::new(Val::Percent(HUD_ROW_WIDTH), Val::Auto),
     flex_direction: FlexDirection::Row,
-    justify_content: JustifyContent::FlexStart,
+    justify_content: JustifyContent::SpaceBetween,
     align_items: AlignItems::Center,
     // Clear of the stat values above and the progress bar below: this font's
     // glyphs draw well past the line box it reports, so nodes that merely abut
@@ -97,6 +102,37 @@ pub const LEVEL_ROW_STYLE: Style = Style {
     },
     ..Style::DEFAULT
 };
+
+/// The lives, at the right end of the level row.
+///
+/// Here and not in the top bar: at 320px that row already holds three stats and
+/// a 48px button, which is why "SEQ" is abbreviated. The level row has the
+/// space, and the markers are not a number that needs a label.
+pub const LIVES_ROW_STYLE: Style = Style {
+    flex_direction: FlexDirection::Row,
+    align_items: AlignItems::Center,
+    ..Style::DEFAULT
+};
+
+/// One life marker: a small square, because this font has no heart glyph and
+/// Bevy 0.10's UI cannot round a corner.
+pub const LIVES_PIP_STYLE: Style = Style {
+    size: Size::new(Val::Px(LIVES_PIP_SIZE), Val::Px(LIVES_PIP_SIZE)),
+    min_size: Size::new(Val::Px(LIVES_PIP_SIZE), Val::Px(LIVES_PIP_SIZE)),
+    margin: UiRect {
+        left: Val::Px(theme::SPACE_XS),
+        right: Val::Px(0.0),
+        top: Val::Px(0.0),
+        bottom: Val::Px(0.0),
+    },
+    ..Style::DEFAULT
+};
+
+pub const LIVES_PIP_SIZE: f32 = 12.0;
+
+/// A life already spent. It stays in the row rather than disappearing, so the
+/// gap is legible as something lost instead of the row simply being shorter.
+pub const LIVES_PIP_SPENT_COLOR: Color = Color::rgba(1.0, 1.0, 1.0, 0.14);
 
 /// Square tap target for the pause control, sized for a thumb.
 pub const ICON_BUTTON_STYLE: Style = Style {

@@ -7,15 +7,27 @@
 
 use bevy::prelude::*;
 
+use crate::game::puzzle::components::ColorPuzzle;
 use crate::game::ui::hud::components::*;
 use crate::game::ui::hud::styles::*;
 use crate::theme;
 
-pub fn spawn_hud(mut commands: Commands, asset_server: Res<AssetServer>) {
-    build_hud(&mut commands, &asset_server);
+pub fn spawn_hud(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    puzzle: Res<ColorPuzzle>,
+) {
+    build_hud(&mut commands, &asset_server, puzzle.max_lives());
 }
 
-pub fn build_hud(commands: &mut Commands, asset_server: &Res<AssetServer>) -> Entity {
+/// `lives` is the mode's full complement, and zero in a timed mode — the row of
+/// markers is built once, at its final length, because the number of lives a
+/// run can hold never changes mid-run.
+pub fn build_hud(
+    commands: &mut Commands,
+    asset_server: &Res<AssetServer>,
+    lives: usize,
+) -> Entity {
     commands
         .spawn((
             NodeBundle {
@@ -107,6 +119,10 @@ pub fn build_hud(commands: &mut Commands, asset_server: &Res<AssetServer>) -> En
                                 ),
                                 LevelValueText,
                             ));
+
+                            if lives > 0 {
+                                spawn_lives_row(parent, lives);
+                            }
                         });
 
                     // Goal gradient made visible: a bar that is visibly close to
@@ -130,6 +146,34 @@ pub fn build_hud(commands: &mut Commands, asset_server: &Res<AssetServer>) -> En
                 });
         })
         .id()
+}
+
+/// The run's lives, as one marker each.
+///
+/// All of them are spawned lit; `update_lives_pips` is what puts them out. That
+/// keeps the "how many are left" decision in one place rather than splitting it
+/// between the builder and the updater.
+fn spawn_lives_row(parent: &mut ChildBuilder, lives: usize) {
+    parent
+        .spawn((
+            NodeBundle {
+                style: LIVES_ROW_STYLE,
+                ..default()
+            },
+            LivesRow,
+        ))
+        .with_children(|parent| {
+            for index in 0..lives {
+                parent.spawn((
+                    NodeBundle {
+                        style: LIVES_PIP_STYLE,
+                        background_color: theme::DANGER.into(),
+                        ..default()
+                    },
+                    LivesPip { index },
+                ));
+            }
+        });
 }
 
 /// A hairline between two stats.

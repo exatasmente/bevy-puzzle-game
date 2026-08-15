@@ -71,6 +71,9 @@ pub fn interact_with_continue_run_button(
 
                 puzzle.setup(&button.game_mode);
                 puzzle.restore_score(button.score);
+                // After `setup`, which seeds a full complement: the run is
+                // picked up where it was left, lives included.
+                puzzle.restore_lives(button.lives);
 
                 game_history.reset();
                 game_history.set_game_mode(button.game_mode);
@@ -80,7 +83,7 @@ pub fn interact_with_continue_run_button(
                 // Keep the stored run pointing at the same place until the
                 // resumed run moves it. Dropping it here would lose the run if
                 // the player bounced straight back to the menu.
-                saved_run.store(button.game_mode, button.score);
+                saved_run.store(button.game_mode, button.score, button.lives);
 
                 transition_to_state_event_writer.send(TransitionToStateEvent {
                     state: AppState::Game,

@@ -168,7 +168,7 @@ src/
     puzzle/                   Core gameplay (see below)
     score/                    ScorePlugin — persisted per-mode BestScores, LastRunOutcome
     ui/
-      hud/                    Top bar: score, streak, timer, level bar, pause
+      hud/                    Top bar: score, streak, timer, pause; level bar and lives
       game_history_menu/      Pause screen: paginated round review, continue, end run
       game_over_menu/         End-of-run summary + "fim de jogo" interstitial
 assets/                       digital7mono.ttf, sfx/*.wav, buttons.png (unused)
@@ -248,6 +248,27 @@ canvas a frame or two after the main menu has already been built at Bevy's defau
   key for persisted bests, `is_timed()` and `hides_colors()` the behavior switches.
   Descriptions have about 25 characters before the type shrinks past reading size —
   shorten the string rather than the floor.
+- **Every mode charges a miss, and exactly one way.** Missing used to be free
+  everywhere — nothing subtracted, and `tick_game_timer` even pauses the clock for the
+  length of the hold — so guessing beat looking. The untimed modes now run on
+  **lives** (`GameMode::starting_lives`, three), which is also the only thing that can
+  end a run in `Infinite`/`Memory`/`Mosaic`; the timed ones charge
+  `GameMode::miss_penalty_seconds` instead (3s / 2s), by winding the timer's *elapsed*
+  forward rather than shortening its duration, so `TimeTrial`'s bonus seconds keep
+  meaning what they meant. Never both in one mode: two falling numbers is one more
+  than the player can watch while reading a field of near-identical colours.
+  `every_mode_has_one_way_to_run_out` pins the split.
+  Lives live on `ColorPuzzle` rather than in a resource of their own, because
+  `setup(&mode)` is the single funnel all three run starts go through (the menu's play
+  button, "jogar novamente", a resumed run) — a separate resource would have to be
+  reset at each of them. A life comes back every `LEVELS_PER_EXTRA_LIFE` (5) levels,
+  capped, and rides on the level-up banner ("NIVEL 5  +1 VIDA") rather than sending a
+  second one, since `handle_banner_events` keeps only the newest. Losing one is
+  reported by the HUD pips alone — a centred banner would cover the answer reveal the
+  post-miss hold exists to show.
+  The run ends in `advance_pending_level`, when the hold expires, not at the pick: it
+  is the hold that shows the player what they missed, and a state change does not
+  apply until the next frame, so ending it inline would also deal a board nobody sees.
 - **`Mosaic`** — the odd-one-out asked as a pattern instead of a color. `src/wfc.rs`
   tiles the grid with pipe pieces whose edges must agree, then breaks exactly one.
   The tile set is deliberately incomplete (no dead ends, no crosses) — with a complete
@@ -270,15 +291,19 @@ canvas a frame or two after the main menu has already been built at Bevy's defau
   `player_interaction` refuses input while previewing, and repaints the true colors
   on a miss so a missed round still teaches.
 - **`GameTimer`** (Resource) — a single `Timer`; starts paused. When it finishes,
-  `tick_game_timer` transitions to `GameOverResume`. Infinite runs never expire, so
-  they end only via "ENCERRAR PARTIDA" on the pause screen.
+  `tick_game_timer` transitions to `GameOverResume`. Untimed runs never expire; they
+  end by running out of lives, or via "ENCERRAR PARTIDA" on the pause screen.
 - **`SavedRun`** (Resource, `src/game/score/`) — the run in progress, persisted as
-  `mode=score`. Only those two values: the score is where the level, the piece count
-  and the color distance all come from, and the board is dealt fresh every round, so
-  there is no position to restore — only a place in the curve. Written whenever the
-  score changes rather than on exit, because the way a browser game ends is a closed
-  tab. Cleared when a run finishes. The main menu offers it as a `CONTINUAR` card
-  above the mode list.
+  `mode=score:lives`. The board is not stored: it is dealt fresh every round, so there
+  is no position to restore — only a place in the curve, which the score carries. The
+  lives are there for the opposite reason, being the one piece of run state the score
+  cannot be derived from; without them the way to survive a bad round would be to
+  close the tab. Written whenever score *or* lives change rather than on exit, because
+  the way a browser game ends is a closed tab. A save with no lives left is dropped
+  rather than stored, and `restore_lives` floors at one — a resumed run with zero
+  could never end, since only a miss ends one. The old `mode=score` format still
+  loads, resuming at a full complement. Cleared when a run finishes. The main menu
+  offers it as a `CONTINUAR` card above the mode list.
 - **`BestScores`** (Resource, `src/game/score/`) — per-mode personal bests, loaded at
   startup and saved on each run end. `LastRunOutcome` carries score/best/is_record to
   the game-over screen; the screen orders itself `.after(RecordOutcomeSet)` so it
@@ -339,8 +364,11 @@ nodes because Bevy's layout owns only `Transform::translation`), `spawn_floating
 `ScreenShakeEvent` / `ScreenShake` (on the camera, next to `BackgroundTranstion`),
 `BannerEvent` for level ups, and `RevealIn` for staggered text. Streak *messages* were
 removed on purpose — the HUD's "SEQ" counter and the summary's "MAIOR SEQUENCIA" stay,
-because those are numbers rather than interruptions. `BannerEvent` is now only ever a
-level up, which is why `audio.rs` can play the level sound off it without filtering.
+because those are numbers rather than interruptions — and why losing a life is
+reported by the HUD pips rather than a banner. `BannerEvent` is still only ever a
+level up (the regained life is folded into that banner's text), which is why
+`audio.rs` can play the level sound off it without filtering. Any genuinely new
+banner type has to filter `play_level_sound`, or it will chime like a level up.
 `src/interaction_animation.rs` consumes `InteractionAnimationEvent` and renders the
 per-pick response: green ring and "+1" on a hit, red cross plus shake and a blinking
 outline over the correct square on a miss.

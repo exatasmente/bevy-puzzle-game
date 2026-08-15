@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy_prototype_lyon::prelude::*;
@@ -123,6 +125,7 @@ pub fn player_interaction(
 
         let mut bonus_seconds = 0.0;
         let mut leveled_up = false;
+        let mut gained_life = false;
 
         if scored {
             if puzzle.game_mode == GameMode::TimeTrial {
@@ -130,6 +133,10 @@ pub fn player_interaction(
             }
 
             leveled_up = puzzle.increase_score(&mut game_timer);
+
+            if leveled_up && puzzle.level_grants_life() {
+                gained_life = puzzle.gain_life();
+            }
         }
 
         events.animation.send(InteractionAnimationEvent {
@@ -142,10 +149,17 @@ pub fn player_interaction(
         });
 
         if leveled_up {
-            events.banner.send(BannerEvent::large(
-                format!("NIVEL {}", puzzle.level()),
-                theme::ACCENT,
-            ));
+            // A regained life rides along on the level-up banner rather than
+            // getting one of its own: `handle_banner_events` keeps only the
+            // newest banner on screen, so two announcements in the same frame
+            // means one of them is never read.
+            let text = if gained_life {
+                format!("NIVEL {}  +1 VIDA", puzzle.level())
+            } else {
+                format!("NIVEL {}", puzzle.level())
+            };
+
+            events.banner.send(BannerEvent::large(text, theme::ACCENT));
         }
 
         events.last_interaction.send(LastInteractionEvent::new(
@@ -159,6 +173,30 @@ pub fn player_interaction(
             // Keep the momentum: a correct pick moves straight on.
             events.start_level.send(StartLevelEvent);
         } else {
+            // Missing is no longer free. A mode with a clock pays in seconds; a
+            // mode without one pays a life, which is also the only thing that
+            // can end an untimed run.
+            //
+            // The clock is charged by winding `elapsed` forward rather than by
+            // shortening the duration, so `TimeTrial`'s bonus seconds — which
+            // extend the duration — keep meaning what they meant. Capping at
+            // the duration is what turns "the penalty was more time than you
+            // had" into an ordinary expiry: `tick_game_timer` is what notices,
+            // and it is paused for the length of the hold, so the run ends
+            // after the answer has been shown rather than over the top of it.
+            let penalty = puzzle.game_mode.miss_penalty_seconds();
+            if penalty > 0.0 {
+                let duration = game_timer.timer.duration().as_secs_f32();
+                let spent = (game_timer.timer.elapsed_secs() + penalty).min(duration);
+                game_timer
+                    .timer
+                    .set_elapsed(Duration::from_secs_f32(spent));
+            }
+
+            // Returns whether that was the last one; the run is ended by
+            // `advance_pending_level`, once the hold has played out.
+            puzzle.lose_life();
+
             // Hold the board so the reveal has something to point at.
             pending_level_start.hold(puzzle.game_mode.hold_seconds());
 
@@ -299,15 +337,37 @@ pub fn tick_round_intro(time: Res<Time>, mut round_intro: ResMut<RoundIntro>) {
     round_intro.tick(time.delta());
 }
 
-/// Starts the next round once a post-miss hold expires.
+/// Starts the next round once a post-miss hold expires — or ends the run, when
+/// that miss was the last life.
+///
+/// The end waits for the hold rather than firing from the pick itself, and for
+/// the same reason the hold exists at all: it is what shows the player the
+/// answer they missed, and swapping to the summary over the top of it would
+/// take away the one thing a miss teaches. Deciding it here rather than in a
+/// system of its own also avoids dealing a board nobody sees — a state change
+/// does not apply until the next frame, so a `StartLevelEvent` sent alongside
+/// it would generate a whole round and then throw it away.
 pub fn advance_pending_level(
     time: Res<Time>,
+    puzzle: Res<ColorPuzzle>,
+    game_timer: Res<GameTimer>,
+    mut game_history: ResMut<GameHistory>,
     mut pending_level_start: ResMut<PendingLevelStart>,
     mut start_level_event_writer: EventWriter<StartLevelEvent>,
+    mut app_state_next_state: ResMut<NextState<crate::AppState>>,
 ) {
-    if pending_level_start.tick(time.delta()) {
-        start_level_event_writer.send(StartLevelEvent);
+    if !pending_level_start.tick(time.delta()) {
+        return;
     }
+
+    if puzzle.is_out_of_lives() {
+        game_history.set_game_mode(puzzle.game_mode);
+        game_history.set_total_time(game_timer.timer.elapsed_secs());
+        app_state_next_state.set(crate::AppState::GameOverResume);
+        return;
+    }
+
+    start_level_event_writer.send(StartLevelEvent);
 }
 
 
