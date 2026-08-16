@@ -127,14 +127,40 @@ PKG_CONFIG_PATH=$PWD/stubs RUSTFLAGS="-L $PWD/linklibs" cargo test
 Note that changing `RUSTFLAGS` invalidates the cache and rebuilds all of Bevy, so set
 it on the first run rather than discovering you need it after a clean `cargo check`.
 
-**Linking is not running.** Bevy still needs a GPU adapter at startup and panics with
-"Unable to find a GPU!" without one. `xvfb-run` alone is not enough: wgpu needs either
-a Vulkan ICD (`mesa-vulkan-drivers`, i.e. lavapipe) or `libEGL` for the GL backend, and
-a bare container typically has neither — Mesa's `swrast_dri.so` and `libGL` are not
-sufficient, because wgpu's GL backend goes through EGL. If you cannot install those,
-say plainly that the change was type-checked but never executed. Most Bevy mistakes
-(missing resources, `single()` on an empty query, system-ordering races) compile fine
-and only fail at runtime, so a clean `cargo check` is weaker evidence than it looks.
+**Linking is not running.** The *native* binary needs a GPU adapter at startup and
+panics with "Unable to find a GPU!" without one. `xvfb-run` alone is not enough: wgpu
+needs either a Vulkan ICD (`mesa-vulkan-drivers`, i.e. lavapipe) or `libEGL` for the
+GL backend, and a bare container typically has neither — Mesa's `swrast_dri.so` and
+`libGL` are not sufficient, because wgpu's GL backend goes through EGL.
+
+**But that is only the native build, and it is not a reason to stop at type-checking.**
+The wasm build needs none of it: the browser supplies WebGL itself, through SwiftShader
+when headless, and a container with Chromium can therefore *play the game*. Do this
+before claiming anything works — most Bevy mistakes (missing resources, `single()` on
+an empty query, plugin ordering) compile fine and only fail at runtime, so a clean
+`cargo check` is weaker evidence than it looks. The 0.19 port shipped a `main.rs` that
+aborted at startup and passed every type-check and all 33 tests on the way there.
+
+```bash
+cargo build --release --target wasm32-unknown-unknown
+cargo install wasm-bindgen-cli --version 0.2.126 --locked
+wasm-bindgen --target web --out-dir dist --out-name puzzle_wasm \
+  target/wasm32-unknown-unknown/release/bevy-tetris.wasm
+cp docs/index.html dist/ && cp -r assets dist/assets       # same as the workflow
+(cd dist && python3 -m http.server 8080 --bind 127.0.0.1 &)
+```
+
+Then drive it with Playwright against the bundled Chromium, launched with
+`--enable-unsafe-swiftshader --use-gl=angle --use-angle=swiftshader`. Give it ~45s to
+boot: the local bundle carries debug info and is ~115 MB, and software rendering is
+slow. Listen to `pageerror` — a Rust panic arrives there as `RuntimeError: unreachable`.
+
+**A panic before `LogPlugin` is installed has no message at all.** `console_error_panic_hook`
+is set up by Bevy during plugin build, so anything that aborts earlier gives a bare
+`unreachable` and an empty console — indistinguishable, from outside, from a hang. The
+stack trace in `pageerror` still names the frame (`...::init_state::<AppState>`), and
+that is usually enough to find it. A canvas still at 300x150, the HTML default, means
+Bevy never took it over and the app never started.
 
 ## Architecture
 
@@ -552,12 +578,11 @@ twice for one mistake.
 - No `rustfmt.toml`/`clippy.toml`, and formatting in the tree is inconsistent (mixed
   indentation, trailing whitespace). Running `cargo fmt` across the repo would produce
   a huge unrelated diff — format only what you touch.
-- **Never despawn a live `Button` from a system in `Update`. (A VERIFICAR against
-  0.19.)** The workaround is still in the tree — `relayout_*` and
-  `spawn_pagination_itens` still run in `PostUpdate` — but the reasoning below is
-  Bevy 0.10's and has not been retested since the port. Do not delete it on the
-  strength of the code compiling; the failure was a runtime panic, so only a run in
-  the browser settles it. Bevy 0.10's
+- **Never despawn a live `Button` from a system in `Update`.** The workaround is
+  still in the tree — `relayout_*` and `spawn_pagination_itens` run in `PostUpdate` —
+  and a browser run on 0.19 raised no `B0003` and no `RuntimeError: unreachable`. That
+  is evidence the workaround *works*, not that it is unnecessary: nothing tested
+  removing it. Leave it in place. The original reasoning, from Bevy 0.10: Bevy 0.10's
   `bevy_ui::accessibility::button_changed` is registered with a plain `add_system`, so
   it sits unordered in `Update` and queues an `insert(AccessibilityNode)` for every
   button it has not tagged. A despawn queued earlier in that schedule is applied
@@ -634,47 +659,28 @@ twice for one mistake.
   *before* the writer in the very frame the value changes — and the flag is only set for
   that one frame, so the label never catches up. `update_sound_label` compares the string
   instead, which is immune to the ordering and still avoids re-laying out the text.
-- **KNOWN BUG: the pause and game-over screens do not repaint in the browser.
-  (A VERIFICAR against 0.19.)** Everything below was measured against Bevy 0.10, and
-  the last line of it named the render graph and wgpu's WebGL surface as the remaining
-  suspects — both of which the port replaced wholesale. So this may well be gone. It
-  has not been retested; the next browser run should settle it, and if the screens
-  repaint, this whole entry goes.
+- **FIXED by the 0.19 port: the pause and game-over screens not repainting in the
+  browser.** This was the bug that made pagination, "menu principal" and "reiniciar"
+  look like the game had hung, while the ECS ran at a full 61 updates a second behind
+  a frozen picture. It is gone.
 
-  This is
-  what makes pagination, "menu principal" and "reiniciar" look like the game has hung.
-  Native is unaffected.
+  Measured, not assumed: on the 0.19 wasm build in Chromium, tapping the pause
+  screen's sound button stepped the label 100% -> 75% -> 50% **on screen**, and the
+  button painted its hover state. That is the exact symptom that used to be frozen.
 
-  It is confined to `History` and `GameOverResume`, and it is not permanent: the main
-  menu repaints, a round repaints, and going *back* to a round from the pause screen
-  repaints again. Only those two states are stuck, and only their picture — the ECS runs
-  at a full 61 updates a second inside them.
+  The diagnosis that survived the longest was right about where it lived. The last
+  note on it named the render graph and wgpu's WebGL surface as the remaining
+  suspects, having ruled out the UI tree by measurement — `ZIndex` in all three
+  forms, `PositionType::Absolute`, the `SCRIM` colour, and a root made structurally
+  identical to the main menu's. The port replaced both suspects wholesale (Bevy
+  0.10 -> 0.19, wgpu 29), and the symptom went with them. No code of ours was
+  changed to fix it.
 
-  **The main world is provably healthy while the picture is frozen.** In `History`,
-  measured from inside the running wasm: `UiStack` holds all ten nodes, the button's
-  `ComputedVisibility` is true, its `Node` size and `GlobalTransform` are correct, and a
-  system that rewrites its `BackgroundColor` every frame changes nothing on screen. The
-  volume label likewise steps 100% → 75% → … → DESLIGADO in the ECS while the pixels
-  never move. Everything `extract_uinodes` reads is right; the drawing does not follow.
+  Keep the measurement advice, because it is what made the result trustworthy: force
+  `preserveDrawingBuffer` in a `getContext` shim, since a WebGL canvas without it can
+  hand back a stale buffer to `readPixels` *and* to a screenshot; and validate any
+  observation tool against a change you know happens before trusting a negative.
 
-  Ruled out, each by building and measuring: `ZIndex::Local`, `ZIndex::Global`, and no
-  `ZIndex` at all; `PositionType::Absolute` on the root; and the `SCRIM` colour — with an
-  opaque background and the root made structurally identical to the main menu's, it still
-  does not repaint. It is not a regression from the audio work either: `e444e91` freezes
-  identically.
-
-  **How to measure this without lying to yourself.** Pixels and audio are both poor
-  channels here — a WebGL canvas without `preserveDrawingBuffer` can hand back a stale
-  buffer to `readPixels` *and* to a browser screenshot, so force that flag in a
-  `getContext` shim. Better still, mirror the state you care about out of Rust with
-  `storage::save`, which reaches `localStorage` on wasm and goes through neither the
-  renderer nor the audio device. And validate any observation tool against a change you
-  know happens — the one-second sweep at the start of a round — before trusting a
-  negative result; sampling the sweep too late reports "frozen" for a screen that is
-  fine.
-
-  Next: the fault is somewhere between the render app's extraction and the surface, so
-  the remaining suspects are the render graph and wgpu's WebGL surface, not the UI tree.
 - **`std::time::SystemTime::now()` panics on `wasm32-unknown-unknown`.** It is fine
   natively, so it compiles and passes tests and then takes the web build down at the line
   that calls it — which, since a wasm panic just stops the frame loop, looks exactly like
