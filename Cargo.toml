@@ -10,13 +10,8 @@ version = "0.9.1"
 # `wav` is not in Bevy's default feature set (which covers Ogg only), and the
 # sounds in assets/sfx are WAV — see tools/make_sounds.py for why.
 bevy = { version = "0.10", features = ["wav"] }
-bevy_utils = "0.10"
-lazy_static = "1.4"
 rand = "0.8"
-bevy_rapier2d  ="0.21"
 bevy_prototype_lyon = "0.8.0"
-bevy-inspector-egui = "0.18"
-wasm-bindgen = "0.2.88"
 
 # Browser-only. Used for localStorage, which is where best scores persist for
 # the build people actually play (GitHub Pages). Native builds keep bests in
@@ -24,6 +19,10 @@ wasm-bindgen = "0.2.88"
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 web-sys = { version = "0.3", features = ["Window", "Storage"] }
 
+# Never named in `src/`, and not removable for that reason: both exist only to
+# turn on a feature a transitive dependency needs to build for the browser at
+# all. Dropping them fails the wasm build with "specify a source of randomness"
+# — measured, not assumed.
 uuid = { version = "1", features = ["js"] }
 getrandom = { version = "0.2", features = ["js"] }
 # Enable only a small amount of optimization in debug mode

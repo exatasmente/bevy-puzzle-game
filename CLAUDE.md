@@ -434,12 +434,18 @@ twice for one mistake.
   render as blanks. Write "HISTORICO", "SEQUENCIA", "OK"/"X".
 - Interactive elements are at least `theme::TOUCH_TARGET` (48px) in both axes; the
   game is played on phones.
-- `Cargo.lock` is gitignored, so dependency versions float within their semver
-  ranges — an unexpected build break may be an upstream release, not your change.
-- `bevy_rapier2d`, `bevy-inspector-egui`, `lazy_static` and `wasm-bindgen` are
-  declared in `Cargo.toml` but unused in `src/`. They still cost build time.
-  `web-sys` is declared under a `cfg(target_arch = "wasm32")` target table and is
-  used only by `src/storage.rs`.
+- `Cargo.lock` **is committed** — this is an executable, not a library. It used to be
+  gitignored, which meant the versions floated within their semver ranges and an
+  unexplained break could be an upstream release rather than a local change.
+- **Two dependencies are named nowhere in `src/` and must stay anyway.** `uuid` and
+  `getrandom`, both under the `cfg(target_arch = "wasm32")` target table, exist only to
+  turn on a feature a transitive dependency needs in order to build for the browser.
+  Removing them fails the wasm build with "specify a source of randomness"; it does not
+  fail the native one, so `cargo check` alone will not catch it — check with
+  `cargo check --target wasm32-unknown-unknown`, which needs no GPU and no system deps.
+  `web-sys`, in the same table, is genuinely used, by `src/storage.rs`.
+  (`bevy_rapier2d`, `bevy-inspector-egui`, `lazy_static`, `wasm-bindgen` and
+  `bevy_utils` really were unused, and are gone.)
 - Tests live in `src/wfc.rs`, `src/board.rs`, `src/mosaic_pattern.rs` and
   `src/game/puzzle/components.rs`, and they cover generator invariants rather than Bevy
   wiring. That split is deliberate: the generators are pure and their guarantees *are*

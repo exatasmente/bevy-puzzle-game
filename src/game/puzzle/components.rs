@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use bevy_utils::Duration;
+use std::time::Duration;
 use rand::prelude::*;
 
 use crate::board::{self, Piece};
