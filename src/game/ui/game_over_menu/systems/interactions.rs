@@ -1,7 +1,9 @@
 use bevy::prelude::*;
 
 use crate::events::TransitionToStateEvent;
-use crate::game::puzzle::components::{GameHistory, NewGameEvent};
+use crate::game::puzzle::components::{level_for_score, GameHistory, NewGameEvent};
+use crate::game::score::resources::LastRunOutcome;
+use crate::storage;
 use crate::game::ui::game_over_menu::components::*;
 use crate::game::ui::game_over_menu::styles::*;
 use crate::AppState;
@@ -86,6 +88,54 @@ pub fn interact_with_game_over_resume_button(
             transition_to_state_event_writer.write(TransitionToStateEvent {
                 state: AppState::GameOverResume,
             });
+        }
+    }
+}
+
+/// Hands the run's numbers to the page, which draws the image and shares it.
+///
+/// Rust does not build the picture. Drawing a card in-engine would mean reading
+/// a texture back off the GPU and handing the bytes to JS, and `navigator.share`
+/// has to be called from inside the gesture anyway — which is the page's world,
+/// not this one. So the summary goes out through `storage::save`, the same
+/// escape hatch used to observe the game from outside it, and the script in
+/// `index.html` picks it up.
+///
+/// A counter rides along on the key so two shares of the same score still read
+/// as two separate requests. Without it the second press writes an identical
+/// value, the storage event never fires, and the button appears dead.
+pub fn interact_with_share_button(
+    mut button_query: Query<
+        (&Interaction, &mut BackgroundColor),
+        (Changed<Interaction>, With<ShareScoreButton>),
+    >,
+    outcome: Res<LastRunOutcome>,
+    game_history: Res<GameHistory>,
+    mut requests: Local<usize>,
+) {
+    for (interaction, mut background_color) in button_query.iter_mut() {
+        match *interaction {
+            Interaction::Pressed => {
+                *background_color = BUTTON_PRESSED.into();
+                *requests += 1;
+
+                // `key=value` pairs, the same shape every other stored value
+                // here uses.
+                let payload = format!(
+                    "n={};mode={};score={};best={};record={};level={};streak={}",
+                    *requests,
+                    game_history.game_mode.as_str(),
+                    outcome.score,
+                    outcome.best,
+                    usize::from(outcome.is_record),
+                    level_for_score(outcome.score),
+                    game_history.max_streak,
+                );
+
+                storage::save("color_puzzle.share_request", &payload);
+            }
+            Interaction::Hovered => *background_color = BUTTON_HOVERED.into(),
+            Interaction::None => *background_color = BUTTON.into(),
         }
     }
 }

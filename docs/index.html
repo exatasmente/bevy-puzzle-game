@@ -8,6 +8,14 @@
       rel="icon"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230e0c16'/%3E%3Crect x='4' y='4' width='11' height='11' fill='%23a855f7'/%3E%3Crect x='17' y='4' width='11' height='11' fill='%234ade80'/%3E%3Crect x='4' y='17' width='11' height='11' fill='%23a3c614'/%3E%3Crect x='17' y='17' width='11' height='11' fill='%23ec4899'/%3E%3C/svg%3E"
     />
+    <!-- Installable. Relative, because Pages serves this from a subpath. -->
+    <link rel="manifest" href="manifest.webmanifest" />
+    <meta name="theme-color" content="#0e0c16" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Color Puzzle" />
+    <link rel="apple-touch-icon" href="icons/icon-192.png" />
     <style>
       /* The page ground matches the game's own, so the canvas does not sit on
          a contrasting page while it loads. */
@@ -76,6 +84,163 @@
       window.__audioShim = { contexts, resume }
     })()
   </script>
+  <!--
+    Share the score as a picture.
+
+    The game cannot do this itself. Drawing the card in-engine would mean
+    reading a texture back off the GPU and handing the bytes over, and
+    `navigator.share` must be called from inside the user gesture that asked for
+    it — which is this side of the wall. So the game writes its numbers to
+    localStorage under `color_puzzle.share_request` and this draws them.
+
+    Polled rather than driven by the `storage` event: that event only fires in
+    *other* documents, never the one that wrote the value, so a listener here
+    would never run. The key carries a counter so two shares of the same score
+    still read as two requests.
+
+    The poll is fast (120ms) for a reason that matters. `navigator.share` needs
+    *transient activation* — a recent user gesture — and the tap that asked for
+    the share is the one that provides it. Transient activation lasts a few
+    seconds, so picking the request up a fraction of a second later is still
+    inside it, but a lazy poll would let it expire and the sheet would refuse to
+    open. Do not slow this down.
+
+    `navigator.share` with files is not everywhere, and it throws if activation
+    has lapsed. Both cases fall through to offering the image as a download,
+    which needs no activation — a share that silently does nothing is worse than
+    a file. Only the user dismissing the sheet is treated as "done".
+  -->
+  <script>
+    ;(function () {
+      const KEY = 'color_puzzle.share_request'
+      const W = 1080
+      const H = 1080
+      let lastSeen = null
+
+      const parse = (raw) => {
+        const out = {}
+        for (const pair of raw.split(';')) {
+          const i = pair.indexOf('=')
+          if (i > 0) out[pair.slice(0, i)] = pair.slice(i + 1)
+        }
+        return out
+      }
+
+      const draw = (data) => {
+        const canvas = document.createElement('canvas')
+        canvas.width = W
+        canvas.height = H
+        const g = canvas.getContext('2d')
+
+        // The game's own ground, so the card is recognisably from it.
+        g.fillStyle = '#0e0c16'
+        g.fillRect(0, 0, W, H)
+        g.fillStyle = '#191725'
+        g.fillRect(60, 60, W - 120, H - 120)
+
+        g.textAlign = 'center'
+        g.fillStyle = '#a855f7'
+        g.font = 'bold 64px system-ui, sans-serif'
+        g.fillText('COLOR PUZZLE', W / 2, 200)
+
+        g.fillStyle = '#9a94b8'
+        g.font = '40px system-ui, sans-serif'
+        g.fillText((data.mode || '').toUpperCase(), W / 2, 270)
+
+        g.fillStyle = '#ffffff'
+        g.font = 'bold 260px system-ui, sans-serif'
+        g.fillText(data.score || '0', W / 2, 560)
+
+        g.fillStyle = '#9a94b8'
+        g.font = '40px system-ui, sans-serif'
+        g.fillText('PONTOS', W / 2, 630)
+
+        if (data.record === '1') {
+          g.fillStyle = '#a3c614'
+          g.font = 'bold 48px system-ui, sans-serif'
+          g.fillText('NOVO RECORDE', W / 2, 720)
+        }
+
+        const facts = [
+          ['NIVEL', data.level],
+          ['MAIOR SEQUENCIA', data.streak],
+          ['RECORDE', data.best],
+        ]
+        let y = 830
+        for (const [label, value] of facts) {
+          g.textAlign = 'left'
+          g.fillStyle = '#9a94b8'
+          g.font = '36px system-ui, sans-serif'
+          g.fillText(label, 140, y)
+          g.textAlign = 'right'
+          g.fillStyle = '#ffffff'
+          g.fillText(String(value ?? '0'), W - 140, y)
+          y += 62
+        }
+
+        return canvas
+      }
+
+      const share = async (data) => {
+        const canvas = draw(data)
+        const blob = await new Promise((r) => canvas.toBlob(r, 'image/png'))
+        if (!blob) return
+
+        const file = new File([blob], 'color-puzzle.png', { type: 'image/png' })
+        const text = `Fiz ${data.score} pontos no Color Puzzle (${data.mode}).`
+
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          try {
+            await navigator.share({ files: [file], text, title: 'Color Puzzle' })
+            return
+          } catch (err) {
+            // AbortError is the user closing the sheet; anything else falls
+            // through to the download so the press still produces something.
+            if (err && err.name === 'AbortError') return
+          }
+        }
+
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = 'color-puzzle.png'
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+        setTimeout(() => URL.revokeObjectURL(url), 10000)
+      }
+
+      setInterval(() => {
+        let raw = null
+        try {
+          raw = localStorage.getItem(KEY)
+        } catch (err) {
+          return
+        }
+        if (!raw || raw === lastSeen) return
+        lastSeen = raw
+        share(parse(raw))
+      }, 120)
+    })()
+  </script>
+
+  <!--
+    Register the service worker.
+
+    After `load`, deliberately: registration competes with the 21 MB wasm fetch
+    for the same connection, and the first visit should spend its bandwidth on
+    the thing the player is waiting for. A failure here is not worth surfacing —
+    the game runs fine uninstalled, and `file://` and private windows refuse
+    registration outright.
+  -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js').catch(() => {})
+      })
+    }
+  </script>
+
   <script type="module">
     import init from './puzzle_wasm.js'
     init()
