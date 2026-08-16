@@ -1,5 +1,4 @@
 # CLAUDE.md
-
 Guidance for AI assistants working in this repository.
  
 ## What this project is
