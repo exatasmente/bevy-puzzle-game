@@ -10,16 +10,16 @@ pub fn interact_with_pause_button(
         (&Interaction, &mut BackgroundColor),
         (Changed<Interaction>, With<HistoryButtom>),
     >,
-    mut transition_to_state_event_writer: EventWriter<TransitionToStateEvent>,
+    mut transition_to_state_event_writer: MessageWriter<TransitionToStateEvent>,
 ) {
     for (interaction, mut background_color) in interaction_query.iter_mut() {
         match *interaction {
-            Interaction::Clicked => {
+            Interaction::Pressed => {
                 *background_color = BUTTON_PRESSED.into();
                 // Routed through the event rather than setting NextState here,
                 // which is what the rest of the UI does and what the web build
                 // needs.
-                transition_to_state_event_writer.send(TransitionToStateEvent {
+                transition_to_state_event_writer.write(TransitionToStateEvent {
                     state: AppState::History,
                 });
             }
@@ -34,13 +34,13 @@ pub fn interact_with_history_back_button(
         (&Interaction, &mut BackgroundColor),
         (Changed<Interaction>, With<HistoryBackButtom>),
     >,
-    mut transition_to_state_event_writer: EventWriter<TransitionToStateEvent>,
+    mut transition_to_state_event_writer: MessageWriter<TransitionToStateEvent>,
 ) {
     for (interaction, mut background_color) in interaction_query.iter_mut() {
         match *interaction {
-            Interaction::Clicked => {
+            Interaction::Pressed => {
                 *background_color = BUTTON_PRESSED.into();
-                transition_to_state_event_writer.send(TransitionToStateEvent {
+                transition_to_state_event_writer.write(TransitionToStateEvent {
                     state: AppState::History,
                 });
             }

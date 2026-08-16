@@ -11,15 +11,17 @@ use crate::Pagination;
 use bevy::prelude::*;
 
 pub struct GameHistoryMenuPlugin;
+#[derive(Message)]
 pub struct SpawnPaginationEvent;
 
 impl Plugin for GameHistoryMenuPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Pagination>()
-            .add_event::<SpawnPaginationEvent>()
+            .add_message::<SpawnPaginationEvent>()
             // OnEnter State Systems
-            .add_system(spawn_game_history_menu.in_schedule(OnEnter(AppState::History)))
+            .add_systems(OnEnter(AppState::History), spawn_game_history_menu)
             .add_systems(
+                Update,
                 (
                     interact_with_level_history_option,
                     interact_with_continue_button,
@@ -29,14 +31,13 @@ impl Plugin for GameHistoryMenuPlugin {
                     interact_with_sound_toggle,
                     update_sound_label,
                 )
-                    .in_set(OnUpdate(AppState::History)),
-            )
-            .add_system(
-                spawn_pagination_itens
-                    .in_base_set(CoreSet::PostUpdate)
                     .run_if(in_state(AppState::History)),
             )
+            .add_systems(
+                PostUpdate,
+                spawn_pagination_itens.run_if(in_state(AppState::History)),
+            )
             // OnExit State Systems
-            .add_system(despawn_game_history_menu.in_schedule(OnExit(AppState::History)));
+            .add_systems(OnExit(AppState::History), despawn_game_history_menu);
     }
 }

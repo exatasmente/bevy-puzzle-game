@@ -1,7 +1,7 @@
 //! Shared design tokens.
 //!
 //! Every feature `styles.rs` pulls colors, type and spacing from here so the
-//! screens read as one product. Layout `Style` consts stay with their feature.
+//! screens read as one product. Layout `Node` consts stay with their feature.
 //!
 //! Note on text: `digital7mono.ttf` is a seven-segment display font with a
 //! narrow glyph set. Keep user-facing strings ASCII and unaccented — no "ç",
@@ -18,58 +18,58 @@ use bevy::prelude::*;
 /// The ground the whole game sits on. Also the board background during a round
 /// — see `ColorPuzzle::background_color`, which tints it slightly toward the
 /// round's own hue.
-pub const BACKGROUND: Color = Color::rgb(0.055, 0.047, 0.086);
+pub const BACKGROUND: Color = Color::srgb(0.055, 0.047, 0.086);
 
 /// Scrim behind full-screen menus. Nearly opaque: the board behind it is a
 /// puzzle in progress, and a legible menu matters more than a glimpse of it.
-pub const SCRIM: Color = Color::rgba(0.043, 0.035, 0.071, 0.94);
+pub const SCRIM: Color = Color::srgba(0.043, 0.035, 0.071, 0.94);
 
 /// Panels sitting on the scrim.
-pub const SURFACE: Color = Color::rgb(0.098, 0.090, 0.145);
+pub const SURFACE: Color = Color::srgb(0.098, 0.090, 0.145);
 /// One step above `SURFACE`: rows, tiles and secondary buttons on a panel.
-pub const SURFACE_RAISED: Color = Color::rgb(0.129, 0.118, 0.188);
+pub const SURFACE_RAISED: Color = Color::srgb(0.129, 0.118, 0.188);
 /// A square with its color hidden, in `Memory`. Light enough to read as a
 /// face-down card against the board background — the player still has to be
 /// able to see what they are aiming at.
-pub const SURFACE_HIDDEN: Color = Color::rgb(0.243, 0.231, 0.318);
+pub const SURFACE_HIDDEN: Color = Color::srgb(0.243, 0.231, 0.318);
 
-/// Hairline that gives a panel its edge. Bevy 0.10 UI has no border color, so
+/// Hairline that gives a panel its edge. The UI has no strokeable border, so
 /// this is used as the background of a wrapper node with a couple of pixels of
 /// padding — the inner node paints over all but the edge.
-pub const OUTLINE: Color = Color::rgb(0.184, 0.169, 0.271);
+pub const OUTLINE: Color = Color::srgb(0.184, 0.169, 0.271);
 
-pub const ON_SURFACE: Color = Color::rgb(0.93, 0.93, 0.96);
+pub const ON_SURFACE: Color = Color::srgb(0.93, 0.93, 0.96);
 /// Secondary text: present but demoted.
-pub const MUTED: Color = Color::rgb(0.54, 0.53, 0.63);
+pub const MUTED: Color = Color::srgb(0.54, 0.53, 0.63);
 
 /// The brand color, and the color of the one action a screen wants taken.
-pub const PRIMARY: Color = Color::rgb(0.659, 0.333, 0.969);
+pub const PRIMARY: Color = Color::srgb(0.659, 0.333, 0.969);
 /// Reward green. Reserved for gains — correct picks, records, streaks.
-pub const SUCCESS: Color = Color::rgb(0.290, 0.871, 0.502);
+pub const SUCCESS: Color = Color::srgb(0.290, 0.871, 0.502);
 /// Loss red. Reserved for misses, for time running out, and for the one
 /// button that ends a run.
-pub const DANGER: Color = Color::rgb(0.882, 0.114, 0.282);
+pub const DANGER: Color = Color::srgb(0.882, 0.114, 0.282);
 /// Celebration gold. Reserved for the rarest moments (records, level ups) so
 /// it keeps its meaning.
-pub const ACCENT: Color = Color::rgb(0.961, 0.647, 0.141);
-pub const LIME: Color = Color::rgb(0.639, 0.776, 0.078);
-pub const INFO: Color = Color::rgb(0.231, 0.510, 0.965);
-pub const PINK: Color = Color::rgb(0.925, 0.282, 0.600);
+pub const ACCENT: Color = Color::srgb(0.961, 0.647, 0.141);
+pub const LIME: Color = Color::srgb(0.639, 0.776, 0.078);
+pub const INFO: Color = Color::srgb(0.231, 0.510, 0.965);
+pub const PINK: Color = Color::srgb(0.925, 0.282, 0.600);
 
 // --- Buttons ---------------------------------------------------------------
 
 pub const BUTTON: Color = SURFACE_RAISED;
-pub const BUTTON_HOVERED: Color = Color::rgb(0.176, 0.161, 0.259);
-pub const BUTTON_PRESSED: Color = Color::rgb(0.224, 0.204, 0.325);
+pub const BUTTON_HOVERED: Color = Color::srgb(0.176, 0.161, 0.259);
+pub const BUTTON_PRESSED: Color = Color::srgb(0.224, 0.204, 0.325);
 
 pub const BUTTON_PRIMARY: Color = PRIMARY;
-pub const BUTTON_PRIMARY_HOVERED: Color = Color::rgb(0.729, 0.443, 0.980);
-pub const BUTTON_PRIMARY_PRESSED: Color = Color::rgb(0.796, 0.553, 0.988);
+pub const BUTTON_PRIMARY_HOVERED: Color = Color::srgb(0.729, 0.443, 0.980);
+pub const BUTTON_PRIMARY_PRESSED: Color = Color::srgb(0.796, 0.553, 0.988);
 
 /// Destructive action: ending the run.
 pub const BUTTON_DANGER: Color = DANGER;
-pub const BUTTON_DANGER_HOVERED: Color = Color::rgb(0.925, 0.220, 0.373);
-pub const BUTTON_DANGER_PRESSED: Color = Color::rgb(0.949, 0.353, 0.478);
+pub const BUTTON_DANGER_HOVERED: Color = Color::srgb(0.925, 0.220, 0.373);
+pub const BUTTON_DANGER_PRESSED: Color = Color::srgb(0.949, 0.353, 0.478);
 
 // --- Spacing ---------------------------------------------------------------
 
@@ -129,6 +129,35 @@ pub fn text_width(value: &str, size: f32) -> f32 {
 /// the string rather than lowering this further.
 const MIN_FIT_SIZE: f32 = 9.0;
 
+/// Font, size and colour for one label.
+///
+/// Bevy split its own `TextStyle` into the separate `TextFont` and `TextColor`
+/// components, which is a better shape for the engine and a worse one for a
+/// design-token module: the three values are decided together here and are
+/// meaningless apart. Keeping them in one struct is what lets `theme::text` and
+/// its named helpers below stay the whole vocabulary the screens speak — the
+/// split happens once, in the builders, instead of at every call site.
+#[derive(Clone)]
+pub struct TextStyle {
+    pub font: Handle<Font>,
+    pub font_size: f32,
+    pub color: Color,
+}
+
+impl TextStyle {
+    /// The components Bevy actually wants, with the fitted size applied.
+    pub fn into_parts(self) -> (TextFont, TextColor) {
+        (
+            TextFont {
+                font: self.font.into(),
+                font_size: FontSize::Px(self.font_size),
+                ..default()
+            },
+            TextColor(self.color),
+        )
+    }
+}
+
 /// A centered text node sized to fit `max_width` on a single line.
 ///
 /// Long labels used to run straight out of their buttons, and simply letting
@@ -140,7 +169,7 @@ const MIN_FIT_SIZE: f32 = 9.0;
 ///
 /// The node also carries vertical margin for the same reason: without it, the
 /// ink of one line touches the line above it.
-pub fn wrapped_text(value: impl Into<String>, style: TextStyle, max_width: f32) -> TextBundle {
+pub fn wrapped_text(value: impl Into<String>, style: TextStyle, max_width: f32) -> impl Bundle {
     let value: String = value.into();
     let max_width = max_width.max(1.0);
 
@@ -151,30 +180,40 @@ pub fn wrapped_text(value: impl Into<String>, style: TextStyle, max_width: f32) 
     }
 
     let breathing_room = (style.font_size * 0.3).ceil();
+    let (font, color) = style.into_parts();
 
-    TextBundle {
-        text: Text::from_section(value, style).with_alignment(TextAlignment::Center),
-        style: Style {
+    (
+        Text::new(value),
+        font,
+        color,
+        TextLayout {
+            justify: Justify::Center,
+            ..default()
+        },
+        Node {
             // Only reached by labels already shrunk to `MIN_FIT_SIZE`; past
             // that, wrapping is still better than overflowing.
-            max_size: Size::new(Val::Px(max_width), Val::Auto),
+            max_width: Val::Px(max_width),
             margin: UiRect::vertical(Val::Px(breathing_room)),
-            ..Style::DEFAULT
+            ..Node::DEFAULT
         },
-        ..default()
-    }
+    )
 }
 
 /// Multi-colored text on one line, fitted the same way [`wrapped_text`] is.
 ///
 /// Used for the wordmark, where each letter carries its own color. Fitting is
 /// done on the whole string so the sections keep a common size.
+/// Sections are child entities now, not a `Vec` on the parent: Bevy models a
+/// run of differently-styled text as a `Text` root with `TextSpan` children.
+/// The fitting is still done on the whole string, so the sections keep a common
+/// size and the wordmark stays one word.
 pub fn wrapped_sections(
     parts: Vec<(String, Color)>,
     font: Handle<Font>,
     base_size: f32,
     max_width: f32,
-) -> TextBundle {
+) -> impl Bundle {
     let max_width = max_width.max(1.0);
     let total: String = parts.iter().map(|(value, _)| value.as_str()).collect();
 
@@ -184,27 +223,41 @@ pub fn wrapped_sections(
         size = (size * max_width / width).max(MIN_FIT_SIZE);
     }
 
-    let sections: Vec<TextSection> = parts
+    let spans: Vec<(TextSpan, TextFont, TextColor)> = parts
         .into_iter()
-        .map(|(value, color)| TextSection {
-            value,
-            style: TextStyle {
-                font: font.clone(),
-                font_size: size,
-                color,
-            },
+        .map(|(value, color)| {
+            (
+                TextSpan::new(value),
+                TextFont {
+                    font: font.clone().into(),
+                    font_size: FontSize::Px(size),
+                    ..default()
+                },
+                TextColor(color),
+            )
         })
         .collect();
 
-    TextBundle {
-        text: Text::from_sections(sections).with_alignment(TextAlignment::Center),
-        style: Style {
-            max_size: Size::new(Val::Px(max_width), Val::Auto),
-            margin: UiRect::vertical(Val::Px((size * 0.3).ceil())),
-            ..Style::DEFAULT
+    (
+        // Empty: every visible glyph lives in a span, so the root is only the
+        // thing they hang off and the box they are laid out in.
+        Text::new(""),
+        TextFont {
+            font: font.into(),
+            font_size: FontSize::Px(size),
+            ..default()
         },
-        ..default()
-    }
+        TextLayout {
+            justify: Justify::Center,
+            ..default()
+        },
+        Node {
+            max_width: Val::Px(max_width),
+            margin: UiRect::vertical(Val::Px((size * 0.3).ceil())),
+            ..Node::DEFAULT
+        },
+        Children::spawn(SpawnIter(spans.into_iter())),
+    )
 }
 
 /// Thickness of the faked borders described on [`OUTLINE`].
@@ -212,41 +265,45 @@ pub const HAIRLINE: f32 = 2.0;
 
 /// Wrapper that draws a `HAIRLINE` border around whatever it contains.
 ///
-/// Bevy 0.10's UI cannot stroke a node, so the border is a parent painted in
+/// The UI cannot stroke a node, so the border is a parent painted in
 /// the border color with just enough padding to show around the child.
-pub fn outlined_style(width: f32) -> Style {
-    Style {
+pub fn outlined_style(width: f32) -> Node {
+    Node {
         // Taffy sizes the content box, so the border's own padding is added
         // outside `width`. Take it off here, or every outlined card ends up
         // `HAIRLINE * 2` wider than the column it is supposed to sit in.
-        size: Size::new(Val::Px((width - HAIRLINE * 2.0).max(1.0)), Val::Auto),
+        width: Val::Px((width - HAIRLINE * 2.0).max(1.0)),
+        height: Val::Auto,
         flex_direction: FlexDirection::Column,
         padding: UiRect::all(Val::Px(HAIRLINE)),
         margin: UiRect::vertical(Val::Px(SPACE_XS)),
-        ..Style::DEFAULT
+        ..Node::DEFAULT
     }
 }
 
 /// The panel that sits inside an [`outlined_style`] wrapper.
-pub fn outlined_inner_style() -> Style {
-    Style {
-        size: Size::new(Val::Percent(100.0), Val::Auto),
+pub fn outlined_inner_style() -> Node {
+    Node {
+        width: Val::Percent(100.0),
+        height: Val::Auto,
         flex_direction: FlexDirection::Row,
         align_items: AlignItems::Center,
         padding: UiRect::all(Val::Px(SPACE_SM)),
-        ..Style::DEFAULT
+        ..Node::DEFAULT
     }
 }
 
 /// A solid color chip: the mode marker on a menu card, the target color on a
 /// history row.
-pub fn tile_style(size: f32) -> Style {
-    Style {
-        size: Size::new(Val::Px(size), Val::Px(size)),
+pub fn tile_style(size: f32) -> Node {
+    Node {
+        width: Val::Px(size),
+        height: Val::Px(size),
         // Flex would otherwise shrink a chip to nothing to make room for a long
         // label, and the chip is the point of the row.
-        min_size: Size::new(Val::Px(size), Val::Px(size)),
-        ..Style::DEFAULT
+        min_width: Val::Px(size),
+        min_height: Val::Px(size),
+        ..Node::DEFAULT
     }
 }
 
@@ -254,15 +311,17 @@ pub fn tile_style(size: f32) -> Style {
 ///
 /// Height is `Auto` over a `TOUCH_TARGET` floor, so a label that needs more
 /// room makes the button taller rather than being clipped by it.
-pub fn button_style(width: f32) -> Style {
-    Style {
-        size: Size::new(Val::Px(width), Val::Auto),
-        min_size: Size::new(Val::Px(width), Val::Px(TOUCH_TARGET)),
+pub fn button_style(width: f32) -> Node {
+    Node {
+        width: Val::Px(width),
+        height: Val::Auto,
+        min_width: Val::Px(width),
+        min_height: Val::Px(TOUCH_TARGET),
         justify_content: JustifyContent::Center,
         align_items: AlignItems::Center,
         padding: UiRect::all(Val::Px(SPACE_SM)),
         margin: UiRect::all(Val::Px(SPACE_XS)),
-        ..Style::DEFAULT
+        ..Node::DEFAULT
     }
 }
 

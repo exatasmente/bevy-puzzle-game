@@ -7,36 +7,38 @@
 
 use bevy::prelude::*;
 
+use crate::game::puzzle::components::ColorPuzzle;
 use crate::game::ui::hud::components::*;
 use crate::game::ui::hud::styles::*;
 use crate::theme;
 
-pub fn spawn_hud(mut commands: Commands, asset_server: Res<AssetServer>) {
-    build_hud(&mut commands, &asset_server);
+pub fn spawn_hud(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    puzzle: Res<ColorPuzzle>,
+) {
+    build_hud(&mut commands, &asset_server, puzzle.max_lives());
 }
 
-pub fn build_hud(commands: &mut Commands, asset_server: &Res<AssetServer>) -> Entity {
+/// `lives` is the mode's full complement, and zero in a timed mode — the row of
+/// markers is built once, at its final length, because the number of lives a
+/// run can hold never changes mid-run.
+pub fn build_hud(
+    commands: &mut Commands,
+    asset_server: &Res<AssetServer>,
+    lives: usize,
+) -> Entity {
     commands
         .spawn((
-            NodeBundle {
-                style: HUD_ROOT_STYLE,
-                ..default()
-            },
+            hud_root_style(),
             HudRoot,
         ))
         .with_children(|parent| {
             parent
-                .spawn(NodeBundle {
-                    style: HUD_PANEL_STYLE,
-                    background_color: HUD_PANEL_COLOR.into(),
-                    ..default()
-                })
+                .spawn((hud_panel_style(), BackgroundColor(HUD_PANEL_COLOR)))
                 .with_children(|parent| {
                     parent
-                        .spawn(NodeBundle {
-                            style: TOP_BAR_STYLE,
-                            ..default()
-                        })
+                        .spawn(top_bar_style())
                         .with_children(|parent| {
                             // Each stat gets its own color, so the eye can find
                             // the one it wants without reading the labels.
@@ -72,11 +74,7 @@ pub fn build_hud(commands: &mut Commands, asset_server: &Res<AssetServer>) -> En
                             // target.
                             parent
                                 .spawn((
-                                    ButtonBundle {
-                                        style: ICON_BUTTON_STYLE,
-                                        background_color: BUTTON.into(),
-                                        ..default()
-                                    },
+                                    (Button, icon_button_style(), BackgroundColor(BUTTON)),
                                     HistoryButtom,
                                 ))
                                 .with_children(|parent| {
@@ -94,10 +92,7 @@ pub fn build_hud(commands: &mut Commands, asset_server: &Res<AssetServer>) -> En
 
                     // Level row: the current level and how close the next one is.
                     parent
-                        .spawn(NodeBundle {
-                            style: LEVEL_ROW_STYLE,
-                            ..default()
-                        })
+                        .spawn(level_row_style())
                         .with_children(|parent| {
                             parent.spawn((
                                 theme::wrapped_text(
@@ -107,23 +102,19 @@ pub fn build_hud(commands: &mut Commands, asset_server: &Res<AssetServer>) -> En
                                 ),
                                 LevelValueText,
                             ));
+
+                            if lives > 0 {
+                                spawn_lives_row(parent, lives);
+                            }
                         });
 
                     // Goal gradient made visible: a bar that is visibly close to
                     // full pulls harder than an unmarked distance.
                     parent
-                        .spawn(NodeBundle {
-                            style: PROGRESS_TRACK_STYLE,
-                            background_color: PROGRESS_TRACK_COLOR.into(),
-                            ..default()
-                        })
+                        .spawn((progress_track_style(), BackgroundColor(PROGRESS_TRACK_COLOR)))
                         .with_children(|parent| {
                             parent.spawn((
-                                NodeBundle {
-                                    style: PROGRESS_FILL_STYLE,
-                                    background_color: theme::PRIMARY.into(),
-                                    ..default()
-                                },
+                                (progress_fill_style(), BackgroundColor(theme::PRIMARY)),
                                 LevelProgressFill,
                             ));
                         });
@@ -132,13 +123,28 @@ pub fn build_hud(commands: &mut Commands, asset_server: &Res<AssetServer>) -> En
         .id()
 }
 
+/// The run's lives, as one marker each.
+///
+/// All of them are spawned lit; `update_lives_pips` is what puts them out. That
+/// keeps the "how many are left" decision in one place rather than splitting it
+/// between the builder and the updater.
+fn spawn_lives_row(parent: &mut ChildSpawnerCommands, lives: usize) {
+    parent
+        .spawn((lives_row_style(), LivesRow))
+        .with_children(|parent| {
+            for index in 0..lives {
+                parent.spawn((
+                    lives_pip_style(),
+                    BackgroundColor(theme::DANGER),
+                    LivesPip { index },
+                ));
+            }
+        });
+}
+
 /// A hairline between two stats.
-fn spawn_divider(parent: &mut ChildBuilder) {
-    parent.spawn(NodeBundle {
-        style: STAT_DIVIDER_STYLE,
-        background_color: theme::OUTLINE.into(),
-        ..default()
-    });
+fn spawn_divider(parent: &mut ChildSpawnerCommands) {
+    parent.spawn((stat_divider_style(), BackgroundColor(theme::OUTLINE)));
 }
 
 /// Widest a stat's label or value may be before it wraps. Stats flex, so this
@@ -147,17 +153,14 @@ const STAT_TEXT_WIDTH: f32 = 96.0;
 
 /// A label stacked over a value, tagged with the marker used to update it.
 fn spawn_stat<M: Component + Default>(
-    parent: &mut ChildBuilder,
+    parent: &mut ChildSpawnerCommands,
     asset_server: &Res<AssetServer>,
     label: &str,
     initial_value: &str,
     value_color: Color,
 ) {
     parent
-        .spawn(NodeBundle {
-            style: STAT_STYLE,
-            ..default()
-        })
+        .spawn(stat_style())
         .with_children(|parent| {
             parent.spawn(theme::wrapped_text(
                 label,
@@ -178,20 +181,13 @@ fn spawn_stat<M: Component + Default>(
 pub fn spawn_back_button(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands
         .spawn((
-            NodeBundle {
-                style: BACK_BUTTON_ROOT_STYLE,
-                ..default()
-            },
+            back_button_root_style(),
             BackButtonRoot,
         ))
         .with_children(|parent| {
             parent
                 .spawn((
-                    ButtonBundle {
-                        style: theme::button_style(BACK_BUTTON_WIDTH),
-                        background_color: BUTTON.into(),
-                        ..default()
-                    },
+                    (Button, theme::button_style(BACK_BUTTON_WIDTH), BackgroundColor(BUTTON)),
                     HistoryBackButtom,
                 ))
                 .with_children(|parent| {
@@ -206,12 +202,12 @@ pub fn spawn_back_button(mut commands: Commands, asset_server: Res<AssetServer>)
 
 pub fn despawn_hud(mut commands: Commands, hud_query: Query<Entity, With<HudRoot>>) {
     for entity in hud_query.iter() {
-        commands.entity(entity).despawn_recursive();
+        commands.entity(entity).despawn();
     }
 }
 
 pub fn despawn_back_button(mut commands: Commands, query: Query<Entity, With<BackButtonRoot>>) {
     for entity in query.iter() {
-        commands.entity(entity).despawn_recursive();
+        commands.entity(entity).despawn();
     }
 }

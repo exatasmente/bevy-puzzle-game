@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use bevy_utils::Duration;
+use std::time::Duration;
 use rand::prelude::*;
 
 use crate::board::{self, Piece};
@@ -44,15 +44,18 @@ impl PuzzleColor {
 }
 
 
+#[derive(Message)]
 pub struct RenderLevelHistoryEvent {
     pub index: usize,
 }
 
+#[derive(Message)]
 pub struct NewGameEvent {
     pub game_mode: GameMode,
 }
 
 
+#[derive(Message)]
 pub struct StartLevelEvent;
 
 #[derive(Debug, Reflect, PartialEq, Eq, Clone, Copy)]
@@ -96,11 +99,11 @@ impl GameMode {
             // Kept short on purpose: the card gives a description about 25
             // characters of room before the type has to shrink past reading
             // size. Say the one thing that distinguishes the mode.
-            GameMode::Infinite => "Sem tempo. No seu ritmo.",
-            GameMode::AgainstTheClock => "60 segundos no relogio.",
-            GameMode::TimeTrial => "30s. Cada acerto soma 3s.",
-            GameMode::Memory => "As cores somem. Lembre.",
-            GameMode::Mosaic => "Ache a peca que nao encaixa.",
+            GameMode::Infinite => "3 vidas. No seu ritmo.",
+            GameMode::AgainstTheClock => "60s. Cada erro custa 3s.",
+            GameMode::TimeTrial => "30s. +3s certo, -2s erro.",
+            GameMode::Memory => "As cores somem. 3 vidas.",
+            GameMode::Mosaic => "A peca que nao encaixa.",
         }
     }
 
@@ -160,12 +163,55 @@ impl GameMode {
             0.7
         }
     }
+
+    /// How many lives a run in this mode starts with, or `None` when the mode
+    /// runs on a clock instead.
+    ///
+    /// Deliberately one or the other, never both: two resources that can each
+    /// end a run means the player has to watch two things at once, and neither
+    /// reads clearly. So the untimed modes — which until now could only end by
+    /// the player pressing "encerrar partida" — get lives, and the timed ones
+    /// charge a miss in seconds (`miss_penalty_seconds`).
+    pub fn starting_lives(&self) -> Option<usize> {
+        if self.is_timed() {
+            None
+        } else {
+            Some(3)
+        }
+    }
+
+    /// What a wrong pick costs in a timed mode.
+    ///
+    /// Missing used to be free everywhere: the board paused, the clock paused
+    /// with it, and nothing at all was subtracted. Guessing was therefore
+    /// strictly better than looking, which is the wrong lesson for a game about
+    /// looking carefully.
+    pub fn miss_penalty_seconds(&self) -> f32 {
+        match self {
+            GameMode::AgainstTheClock => 3.0,
+            // Lighter, because a miss here already costs the three seconds the
+            // pick would have earned — the mode charges twice on its own.
+            GameMode::TimeTrial => 2.0,
+            _ => 0.0,
+        }
+    }
 }
+
+/// Levels between one free life and the next.
+///
+/// Three lives and no way back turns `Infinite` into a short sprint, which is
+/// the opposite of the thing it is named for. Every fifth level hands one back,
+/// never above the mode's maximum — so a careful player can hold three
+/// indefinitely and a reckless one still bleeds out.
+pub const LEVELS_PER_EXTRA_LIFE: usize = 5;
 
 
 #[derive(Resource, Debug, Reflect)]
 pub struct ColorPuzzle {
     score: usize,
+    /// Wrong picks left before the run ends. Always zero in a timed mode, which
+    /// spends seconds on a miss instead — see `GameMode::starting_lives`.
+    lives: usize,
     current_colors: Vec<Color>,
     /// The color all but one square share this round.
     base_color: Color,
@@ -201,7 +247,7 @@ impl Default for ColorPuzzle {
 
 /// Whether two colors are the same paint.
 pub fn colors_match(a: Color, b: Color) -> bool {
-    (a.r() - b.r()).abs() < 1e-4 && (a.g() - b.g()).abs() < 1e-4 && (a.b() - b.b()).abs() < 1e-4
+    (a.to_srgba().red - b.to_srgba().red).abs() < 1e-4 && (a.to_srgba().green - b.to_srgba().green).abs() < 1e-4 && (a.to_srgba().blue - b.to_srgba().blue).abs() < 1e-4
 }
 
 // --- The difficulty curve --------------------------------------------------
@@ -416,8 +462,11 @@ impl ColorPuzzle {
    pub  fn new() -> Self {
         let mut puzzle =  Self {
             score: 0,
+            // Seeded by the `setup` call below, which is the only thing that
+            // knows the mode.
+            lives: 0,
             current_colors: vec![],
-            base_color: Color::rgb(0.5, 0.5, 0.5),
+            base_color: Color::srgb(0.5, 0.5, 0.5),
             current_tiles: vec![],
             current_slots: vec![],
             current_columns: 0,
@@ -478,8 +527,12 @@ impl ColorPuzzle {
                 self.game_mode = GameMode::Memory;
             },
         }
-   
-        
+
+        // Last, because it reads the mode the match above just set. Doing it
+        // here rather than at the three places a run begins is what keeps the
+        // menu's play button, "jogar novamente" and a resumed run from each
+        // having to remember to do it.
+        self.lives = self.game_mode.starting_lives().unwrap_or(0);
     }
 
     pub fn set_window_size(&mut self, width: f32, height: f32) {
@@ -571,7 +624,7 @@ impl ColorPuzzle {
         // The centre of the round, kept off the extremes of lightness so the
         // palette has room to spread in any direction and stay displayable.
         let base_lab = Self::random_base(&mut rng);
-        let base_color = oklab::to_color(base_lab).unwrap_or(Color::rgb(0.5, 0.5, 0.5));
+        let base_color = oklab::to_color(base_lab).unwrap_or(Color::srgb(0.5, 0.5, 0.5));
         let palette = Self::palette(&mut rng, base_lab, pattern.group_count);
 
         // Only filled cells become pieces. An empty cell is simply absent —
@@ -653,7 +706,7 @@ impl ColorPuzzle {
                 }
 
                 let flat = Oklab::from_lch(lightness, 0.0, hue);
-                (flat, oklab::to_color(flat).unwrap_or(Color::rgb(0.5, 0.5, 0.5)))
+                (flat, oklab::to_color(flat).unwrap_or(Color::srgb(0.5, 0.5, 0.5)))
             })
             .collect()
     }
@@ -772,7 +825,7 @@ impl ColorPuzzle {
         let mosaic = wfc::generate(columns, rows, mosaic_violations_for_level(level), rng);
 
         let base_lab = Self::random_base(rng);
-        let base_color = oklab::to_color(base_lab).unwrap_or(Color::rgb(0.5, 0.5, 0.5));
+        let base_color = oklab::to_color(base_lab).unwrap_or(Color::srgb(0.5, 0.5, 0.5));
 
         self.base_color = base_color;
         self.current_colors = vec![base_color; mosaic.tiles.len()];
@@ -906,6 +959,67 @@ impl ColorPuzzle {
         self.seconds_added_per_success
     }
 
+    // --- Lives -------------------------------------------------------------
+
+    /// Wrong picks left. Zero in the timed modes, which do not use lives at
+    /// all — check `uses_lives` before reading anything into it.
+    pub fn lives(&self) -> usize {
+        self.lives
+    }
+
+    /// The mode's full complement; zero when the mode has none.
+    pub fn max_lives(&self) -> usize {
+        self.game_mode.starting_lives().unwrap_or(0)
+    }
+
+    /// Whether this run can be lost by running out of lives.
+    pub fn uses_lives(&self) -> bool {
+        self.max_lives() > 0
+    }
+
+    /// Charges a miss. Returns true when that was the last life.
+    pub fn lose_life(&mut self) -> bool {
+        if !self.uses_lives() {
+            return false;
+        }
+
+        self.lives = self.lives.saturating_sub(1);
+        self.lives == 0
+    }
+
+    /// Whether the run has been lost. False in every timed mode, where the
+    /// clock is what ends things.
+    pub fn is_out_of_lives(&self) -> bool {
+        self.uses_lives() && self.lives == 0
+    }
+
+    /// Whether reaching the current level earns a life back.
+    pub fn level_grants_life(&self) -> bool {
+        self.uses_lives() && self.level() % LEVELS_PER_EXTRA_LIFE == 0
+    }
+
+    /// Hands a life back, never above the maximum. Returns true when one was
+    /// actually given, so the caller can say so instead of announcing nothing.
+    pub fn gain_life(&mut self) -> bool {
+        if !self.uses_lives() || self.lives >= self.max_lives() {
+            return false;
+        }
+
+        self.lives += 1;
+        true
+    }
+
+    /// Puts the lives back to where a stored run left them.
+    ///
+    /// Clamped to the maximum, because the stored value comes from a previous
+    /// build's idea of how many a mode gets — and floored at one, because a run
+    /// resumed with none left could not be played: the only thing that ends a
+    /// run is a miss, and a miss cannot take a life that is already gone.
+    pub fn restore_lives(&mut self, lives: usize) {
+        let max = self.max_lives();
+        self.lives = lives.clamp(usize::from(max > 0), max);
+    }
+
     /// Whether the square at `index` is the odd one out.
     ///
     /// By index, not by color: every other square now shares one color by
@@ -920,6 +1034,10 @@ impl ColorPuzzle {
 
     pub fn reset(&mut self) {
         self.score = 0;
+        // Reads the *current* mode, which is right for a standalone reset. In
+        // `setup` this runs before the mode is assigned, and the tail of that
+        // function sets the lives again from the new one.
+        self.lives = self.game_mode.starting_lives().unwrap_or(0);
     }
 
     /// Puts the score back to where a stored run left it, so the level, the
@@ -970,6 +1088,7 @@ pub struct LevelColor {
     pub tile : Option<Tile>,
 }
 
+#[derive(Message)]
 pub struct LastInteractionEvent {
     clicked_position: Vec2,
     correct_color_index: usize,
@@ -1165,7 +1284,7 @@ impl RoundIntro {
         };
 
         timer.tick(delta);
-        if timer.finished() {
+        if timer.is_finished() {
             self.timer = None;
         }
     }
@@ -1214,7 +1333,7 @@ impl MemoryPhase {
 
         timer.tick(delta);
 
-        if timer.finished() {
+        if timer.is_finished() {
             self.preview = None;
             self.hidden = true;
             return true;
@@ -1255,7 +1374,7 @@ impl PendingLevelStart {
 
         timer.tick(delta);
 
-        if timer.finished() {
+        if timer.is_finished() {
             self.timer = None;
             return true;
         }
@@ -1281,6 +1400,129 @@ mod tests {
         for (index, start) in TABLE.iter().enumerate() {
             assert_eq!(score_for_level(index + 1), *start, "level {}", index + 1);
         }
+    }
+
+    /// Exactly one of the two ways to lose per mode. A mode with both would
+    /// make the player watch two falling numbers at once; a mode with neither
+    /// is the bug this replaced — three of the five could only end by the
+    /// player pressing "encerrar partida".
+    #[test]
+    fn every_mode_has_one_way_to_run_out() {
+        for mode in GameMode::iter() {
+            let has_lives = mode.starting_lives().is_some();
+            let charges_time = mode.miss_penalty_seconds() > 0.0;
+
+            assert_ne!(
+                has_lives, charges_time,
+                "{:?} should charge a miss one way or the other, not both or neither",
+                mode.as_str()
+            );
+            assert_eq!(
+                has_lives,
+                !mode.is_timed(),
+                "{} has a clock and lives, or neither",
+                mode.as_str()
+            );
+        }
+    }
+
+    /// Lives count down to zero and stop there, and zero is what ends the run.
+    #[test]
+    fn the_last_life_ends_the_run() {
+        let mut puzzle = ColorPuzzle::new();
+        puzzle.setup(&GameMode::Infinite);
+
+        let max = puzzle.max_lives();
+        assert!(max > 0, "Infinite should have lives");
+        assert_eq!(puzzle.lives(), max, "a run starts with a full complement");
+
+        for remaining in (1..max).rev() {
+            assert!(!puzzle.lose_life(), "the run ended early");
+            assert_eq!(puzzle.lives(), remaining);
+            assert!(!puzzle.is_out_of_lives());
+        }
+
+        assert!(puzzle.lose_life(), "the last life should end the run");
+        assert!(puzzle.is_out_of_lives());
+
+        // And it stays ended: nothing underflows past zero.
+        assert!(puzzle.lose_life());
+        assert_eq!(puzzle.lives(), 0);
+    }
+
+    /// A timed mode has no lives to lose, so a miss there must not be able to
+    /// end the run through this path — its clock is what does that.
+    #[test]
+    fn a_timed_run_cannot_run_out_of_lives() {
+        let mut puzzle = ColorPuzzle::new();
+        puzzle.setup(&GameMode::AgainstTheClock);
+
+        assert_eq!(puzzle.max_lives(), 0);
+        assert!(!puzzle.lose_life());
+        assert!(!puzzle.is_out_of_lives());
+    }
+
+    /// A life back every fifth level, and never a fourth one in a three-life
+    /// mode: the recovery is what keeps `Infinite` from being a sprint, not a
+    /// way to bank a buffer.
+    #[test]
+    fn lives_come_back_but_never_past_the_maximum() {
+        let mut puzzle = ColorPuzzle::new();
+        puzzle.setup(&GameMode::Infinite);
+
+        assert!(!puzzle.gain_life(), "a full run has nothing to gain");
+        assert_eq!(puzzle.lives(), puzzle.max_lives());
+
+        puzzle.lose_life();
+        assert!(puzzle.gain_life());
+        assert_eq!(puzzle.lives(), puzzle.max_lives());
+
+        // The grant lands on every fifth level and nowhere else.
+        for level in 1..40 {
+            puzzle.restore_score(score_for_level(level));
+            assert_eq!(
+                puzzle.level_grants_life(),
+                level % LEVELS_PER_EXTRA_LIFE == 0,
+                "level {}",
+                level
+            );
+        }
+    }
+
+    /// Setting a mode up always seeds its lives — this is the single funnel all
+    /// three of the places a run starts go through.
+    #[test]
+    fn setup_seeds_the_lives_for_every_mode() {
+        let mut puzzle = ColorPuzzle::new();
+
+        for mode in GameMode::iter() {
+            puzzle.setup(&mode);
+            assert_eq!(
+                puzzle.lives(),
+                mode.starting_lives().unwrap_or(0),
+                "{} was set up with the wrong lives",
+                mode.as_str()
+            );
+        }
+    }
+
+    /// A resumed run comes back where it left off, but never in a state it
+    /// cannot be played from.
+    #[test]
+    fn a_restored_run_is_always_playable() {
+        let mut puzzle = ColorPuzzle::new();
+        puzzle.setup(&GameMode::Memory);
+
+        puzzle.restore_lives(1);
+        assert_eq!(puzzle.lives(), 1);
+
+        // Zero would be a run that is already over and can never end.
+        puzzle.restore_lives(0);
+        assert_eq!(puzzle.lives(), 1);
+
+        // A save from a build that was more generous does not overfill it.
+        puzzle.restore_lives(99);
+        assert_eq!(puzzle.lives(), puzzle.max_lives());
     }
 
     /// `level_for_score` is the inverse, at the boundaries as well as between

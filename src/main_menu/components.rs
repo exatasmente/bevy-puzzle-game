@@ -14,4 +14,6 @@ pub struct PlayButton {
 pub struct ContinueRunButton {
     pub game_mode: GameMode,
     pub score: usize,
+    /// Lives the stored run had left. Zero in a timed mode, which has none.
+    pub lives: usize,
 }

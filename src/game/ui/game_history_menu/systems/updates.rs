@@ -19,11 +19,11 @@ use crate::theme;
 /// The list is already built from an event, so a relayout is just that event
 /// again — no second code path to keep in step with the first.
 pub fn relayout_game_history_menu(
-    mut relayout_events: EventReader<crate::layout::RelayoutEvent>,
-    mut spawn_pagination_event_writer: EventWriter<SpawnPaginationEvent>,
+    mut relayout_events: MessageReader<crate::layout::RelayoutEvent>,
+    mut spawn_pagination_event_writer: MessageWriter<SpawnPaginationEvent>,
 ) {
-    if relayout_events.iter().next().is_some() {
-        spawn_pagination_event_writer.send(SpawnPaginationEvent);
+    if relayout_events.read().next().is_some() {
+        spawn_pagination_event_writer.write(SpawnPaginationEvent);
     }
 }
 
@@ -32,16 +32,16 @@ pub fn spawn_pagination_itens(
     game_history: Res<GameHistory>,
     asset_server: Res<AssetServer>,
     mut pagination: ResMut<Pagination>,
-    mut spawn_pagination_event_reader: EventReader<SpawnPaginationEvent>,
+    mut spawn_pagination_event_reader: MessageReader<SpawnPaginationEvent>,
     volume: Res<crate::audio::Volume>,
     window_query: Query<&Window>,
 ) {
-    if spawn_pagination_event_reader.iter().count() == 0 {
+    if spawn_pagination_event_reader.read().count() == 0 {
         return;
     }
 
     let width = window_query
-        .get_single()
+        .single()
         .map(|window| theme::content_width(window.width()))
         .unwrap_or(theme::CONTENT_MAX_WIDTH);
     let label_width = history_card_label_width(width);
@@ -51,7 +51,7 @@ pub fn spawn_pagination_itens(
     let Some(parent) = pagination.get_entity() else {
         return;
     };
-    commands.entity(parent).despawn_descendants();
+    commands.entity(parent).despawn_related::<Children>();
 
     commands.entity(parent).with_children(|parent| {
         parent.spawn(theme::wrapped_text(
@@ -74,20 +74,12 @@ pub fn spawn_pagination_itens(
 
                 parent
                     .spawn((
-                        ButtonBundle {
-                            style: history_card_style(width),
-                            background_color: BUTTON.into(),
-                            ..default()
-                        },
+                        (Button, history_card_style(width), BackgroundColor(BUTTON)),
                         LevelHistoryOption { index },
                     ))
                     .with_children(|parent| {
                         // The color the round was asking for.
-                        parent.spawn(NodeBundle {
-                            style: theme::tile_style(SWATCH_SIZE),
-                            background_color: level.get_correct_color().into(),
-                            ..default()
-                        });
+                        parent.spawn((theme::tile_style(SWATCH_SIZE), BackgroundColor(level.get_correct_color())));
 
                         parent.spawn(theme::wrapped_text(
                             format!("DESAFIO {}", index + 1),
@@ -123,7 +115,7 @@ pub fn spawn_pagination_itens(
 
 fn build_actions(
     asset_server: &Res<AssetServer>,
-    parent: &mut ChildBuilder,
+    parent: &mut ChildSpawnerCommands,
     width: f32,
     sound_label: String,
 ) {
@@ -135,11 +127,7 @@ fn build_actions(
     // has no slider widget, and a drag target is the wrong shape for a thumb.
     parent
         .spawn((
-            ButtonBundle {
-                style: button_style(width),
-                background_color: BUTTON.into(),
-                ..default()
-            },
+            (Button, button_style(width), BackgroundColor(BUTTON)),
             SoundToggleButton,
         ))
         .with_children(|parent| {
@@ -151,11 +139,7 @@ fn build_actions(
 
     parent
         .spawn((
-            ButtonBundle {
-                style: button_style(width),
-                background_color: theme::BUTTON_PRIMARY.into(),
-                ..default()
-            },
+            (Button, button_style(width), BackgroundColor(theme::BUTTON_PRIMARY)),
             ContinueButton,
         ))
         .with_children(|parent| {
@@ -171,13 +155,13 @@ fn build_actions(
     // could never be recorded.
     parent
         .spawn((
-            ButtonBundle {
-                style: button_style(width),
+            (
+                Button,
+                button_style(width),
                 // The one destructive action on the screen, and the only red
                 // button in the game.
-                background_color: theme::BUTTON_DANGER.into(),
-                ..default()
-            },
+                BackgroundColor(theme::BUTTON_DANGER),
+            ),
             EndRunButton,
         ))
         .with_children(|parent| {
@@ -191,7 +175,7 @@ fn build_actions(
 
 fn build_pagination_element(
     asset_server: &Res<AssetServer>,
-    parent: &mut ChildBuilder,
+    parent: &mut ChildSpawnerCommands,
     pagination: &mut ResMut<Pagination>,
     width: f32,
 ) {
@@ -200,10 +184,7 @@ fn build_pagination_element(
     }
 
     parent
-        .spawn(NodeBundle {
-            style: pagination_container_style(width),
-            ..default()
-        })
+        .spawn(pagination_container_style(width))
         .with_children(|parent| {
             spawn_pagination_button(
                 parent,
@@ -241,18 +222,14 @@ fn build_pagination_element(
 }
 
 fn spawn_pagination_button(
-    parent: &mut ChildBuilder,
+    parent: &mut ChildSpawnerCommands,
     asset_server: &Res<AssetServer>,
     label: &str,
     index: usize,
 ) {
     parent
         .spawn((
-            ButtonBundle {
-                style: BUTTON_PAGINATION_STYLE,
-                background_color: BUTTON.into(),
-                ..default()
-            },
+            (Button, button_pagination_style(), BackgroundColor(BUTTON)),
             PaginationOption { index },
         ))
         .with_children(|parent| {
@@ -285,10 +262,8 @@ pub fn update_sound_label(
     let label = volume.label();
 
     for mut text in query.iter_mut() {
-        if let Some(section) = text.sections.first_mut() {
-            if section.value != label {
-                section.value = label.clone();
-            }
+        if text.0 != label {
+            text.0 = label.clone();
         }
     }
 }

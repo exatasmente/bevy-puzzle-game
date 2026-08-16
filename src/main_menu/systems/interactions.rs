@@ -17,7 +17,7 @@ pub fn interact_with_play_button(
         (&Interaction, &mut BackgroundColor, &PlayButton),
         (Changed<Interaction>, With<PlayButton>),
     >,
-    mut transition_to_state_event_writer: EventWriter<TransitionToStateEvent>,
+    mut transition_to_state_event_writer: MessageWriter<TransitionToStateEvent>,
     mut puzzle: ResMut<ColorPuzzle>,
     mut game_history: ResMut<GameHistory>,
     mut pagination: ResMut<Pagination>,
@@ -29,13 +29,13 @@ pub fn interact_with_play_button(
         let accent = play_button.game_mode.accent();
 
         match *interaction {
-            Interaction::Clicked => {
+            Interaction::Pressed => {
                 *background_color = card_border_pressed(accent).into();
                 puzzle.setup(&play_button.game_mode);
                 game_history.reset();
                 game_history.set_game_mode(play_button.game_mode);
                 pagination.reset();
-                transition_to_state_event_writer.send(TransitionToStateEvent {
+                transition_to_state_event_writer.write(TransitionToStateEvent {
                     state: AppState::Game,
                 });
             }
@@ -56,7 +56,7 @@ pub fn interact_with_continue_run_button(
         (&Interaction, &mut BackgroundColor, &ContinueRunButton),
         (Changed<Interaction>, With<ContinueRunButton>),
     >,
-    mut transition_to_state_event_writer: EventWriter<TransitionToStateEvent>,
+    mut transition_to_state_event_writer: MessageWriter<TransitionToStateEvent>,
     mut puzzle: ResMut<ColorPuzzle>,
     mut game_history: ResMut<GameHistory>,
     mut pagination: ResMut<Pagination>,
@@ -66,11 +66,14 @@ pub fn interact_with_continue_run_button(
         let accent = button.game_mode.accent();
 
         match *interaction {
-            Interaction::Clicked => {
+            Interaction::Pressed => {
                 *background_color = card_border_pressed(accent).into();
 
                 puzzle.setup(&button.game_mode);
                 puzzle.restore_score(button.score);
+                // After `setup`, which seeds a full complement: the run is
+                // picked up where it was left, lives included.
+                puzzle.restore_lives(button.lives);
 
                 game_history.reset();
                 game_history.set_game_mode(button.game_mode);
@@ -80,9 +83,9 @@ pub fn interact_with_continue_run_button(
                 // Keep the stored run pointing at the same place until the
                 // resumed run moves it. Dropping it here would lose the run if
                 // the player bounced straight back to the menu.
-                saved_run.store(button.game_mode, button.score);
+                saved_run.store(button.game_mode, button.score, button.lives);
 
-                transition_to_state_event_writer.send(TransitionToStateEvent {
+                transition_to_state_event_writer.write(TransitionToStateEvent {
                     state: AppState::Game,
                 });
             }

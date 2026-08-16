@@ -1,4 +1,4 @@
-use bevy::core_pipeline::clear_color::ClearColorConfig;
+use bevy::camera::ClearColorConfig;
 use bevy::prelude::*;
 
 use crate::game::puzzle::components::{level_for_score, GameMode};
@@ -18,7 +18,7 @@ pub fn spawn_main_menu(
     // Cards are laid out against the real window width so their labels can be
     // fitted to a pixel width.
     let (width, height) = window_query
-        .get_single()
+        .single()
         .map(|window| (theme::content_width(window.width()), window.height()))
         .unwrap_or((theme::CONTENT_MAX_WIDTH, 720.0));
 
@@ -31,9 +31,9 @@ pub fn spawn_main_menu(
 /// used to reset it — so the menu inherited the color of the board the player
 /// just left.
 pub fn reset_background(
-    mut camera_query: Query<(&mut Camera2d, &mut BackgroundTranstion), With<Camera>>,
+    mut camera_query: Query<(&mut Camera, &mut BackgroundTranstion), With<Camera2d>>,
 ) {
-    let Ok((mut camera, mut transition)) = camera_query.get_single_mut() else {
+    let Ok((mut camera, mut transition)) = camera_query.single_mut() else {
         return;
     };
 
@@ -61,23 +61,23 @@ pub fn reset_background(
 /// unconditionally and adds the plugin itself.
 pub fn relayout_main_menu(
     mut commands: Commands,
-    mut relayout_events: EventReader<crate::layout::RelayoutEvent>,
+    mut relayout_events: MessageReader<crate::layout::RelayoutEvent>,
     main_menu_query: Query<Entity, With<MainMenu>>,
     asset_server: Res<AssetServer>,
     best_scores: Res<BestScores>,
     saved_run: Res<SavedRun>,
     window_query: Query<&Window>,
 ) {
-    if relayout_events.iter().next().is_none() {
+    if relayout_events.read().next().is_none() {
         return;
     }
 
-    let Ok(window) = window_query.get_single() else {
+    let Ok(window) = window_query.single() else {
         return;
     };
 
     for entity in main_menu_query.iter() {
-        commands.entity(entity).despawn_recursive();
+        commands.entity(entity).despawn();
     }
 
     build_main_menu(
@@ -92,7 +92,7 @@ pub fn relayout_main_menu(
 
 pub fn despawn_main_menu(mut commands: Commands, main_menu_query: Query<Entity, With<MainMenu>>) {
     for entity in main_menu_query.iter() {
-        commands.entity(entity).despawn_recursive();
+        commands.entity(entity).despawn();
     }
 }
 
@@ -116,19 +116,12 @@ pub fn build_main_menu(
 
     commands
         .spawn((
-            NodeBundle {
-                style: MAIN_MENU_STYLE,
-                background_color: theme::BACKGROUND.into(),
-                ..default()
-            },
+            (main_menu_style(), BackgroundColor(theme::BACKGROUND)),
             MainMenu,
         ))
         .with_children(|parent| {
             parent
-                .spawn(NodeBundle {
-                    style: title_style(height),
-                    ..default()
-                })
+                .spawn(title_style(height))
                 .with_children(|parent| {
                     // "COLOR" plain, "PUZZLE" running through the palette — the
                     // wordmark from the mock-up, built from text sections rather
@@ -149,7 +142,18 @@ pub fn build_main_menu(
             // Offered first, and only when there is a run worth coming back
             // to: a player who left mid-run is here to finish it, not to read
             // the mode list again.
-            if let Some((game_mode, score)) = resume {
+            if let Some(run) = resume {
+                let game_mode = run.game_mode;
+
+                // The lives are part of what the player is coming back to, so
+                // the card says how many are left rather than making the
+                // resumed run reveal it.
+                let footnote = if game_mode.starting_lives().is_some() {
+                    format!("PONTOS: {} - VIDAS: {}", run.score, run.lives)
+                } else {
+                    format!("PONTOS: {}", run.score)
+                };
+
                 spawn_card(
                     parent,
                     asset_server,
@@ -159,9 +163,13 @@ pub fn build_main_menu(
                     chip_size,
                     text_width,
                     "CONTINUAR",
-                    &format!("{} - NIVEL {}", game_mode.as_str().to_uppercase(), level_for_score(score)),
-                    Some(format!("PONTOS: {}", score)),
-                    ContinueRunButton { game_mode, score },
+                    &format!("{} - NIVEL {}", game_mode.as_str().to_uppercase(), level_for_score(run.score)),
+                    Some(footnote),
+                    ContinueRunButton {
+                        game_mode,
+                        score: run.score,
+                        lives: run.lives,
+                    },
                 );
             }
 
@@ -213,7 +221,7 @@ fn wordmark() -> Vec<(String, Color)> {
 /// an optional number underneath.
 #[allow(clippy::too_many_arguments)]
 fn spawn_card<M: Component>(
-    parent: &mut ChildBuilder,
+    parent: &mut ChildSpawnerCommands,
     asset_server: &Res<AssetServer>,
     accent: Color,
     width: f32,
@@ -227,35 +235,23 @@ fn spawn_card<M: Component>(
 ) {
     parent
         .spawn((
-            ButtonBundle {
-                style: theme::outlined_style(width),
-                background_color: card_border(accent).into(),
-                ..default()
-            },
+            (Button, theme::outlined_style(width), BackgroundColor(card_border(accent))),
             marker,
         ))
         .with_children(|parent| {
             parent
-                .spawn(NodeBundle {
-                    style: mode_card_inner_style(card_height),
-                    background_color: theme::SURFACE.into(),
-                    ..default()
-                })
+                .spawn((
+                    mode_card_inner_style(card_height),
+                    BackgroundColor(theme::SURFACE),
+                ))
                 .with_children(|parent| {
                     // The card's marker. The mock-up puts an icon here; the
                     // display font has no glyph for one and there is no icon
                     // asset, so the color carries the identity on its own.
-                    parent.spawn(NodeBundle {
-                        style: theme::tile_style(chip_size),
-                        background_color: accent.into(),
-                        ..default()
-                    });
+                    parent.spawn((theme::tile_style(chip_size), BackgroundColor(accent)));
 
                     parent
-                        .spawn(NodeBundle {
-                            style: mode_card_text_style(text_width),
-                            ..default()
-                        })
+                        .spawn(mode_card_text_style(text_width))
                         .with_children(|parent| {
                             parent.spawn(theme::wrapped_text(
                                 title,

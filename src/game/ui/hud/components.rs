@@ -21,6 +21,19 @@ pub struct TimerValueText;
 #[derive(Component)]
 pub struct LevelValueText;
 
+/// Container for the life markers. Only spawned in a mode that has lives.
+#[derive(Component)]
+pub struct LivesRow;
+
+/// One life marker. `index` is its place in the row counted from the left, so
+/// the update system can light the first `n` of them without reordering
+/// anything — a spent life keeps its slot, which is how the player can still
+/// see how many they started with.
+#[derive(Component)]
+pub struct LivesPip {
+    pub index: usize,
+}
+
 /// The filling part of the level progress bar.
 #[derive(Component)]
 pub struct LevelProgressFill;

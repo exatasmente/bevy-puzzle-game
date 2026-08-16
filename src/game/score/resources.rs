@@ -105,33 +105,58 @@ pub struct LastRunOutcome {
     pub is_record: bool,
 }
 
+/// Where a stored run had got to.
+#[derive(Debug, Clone, Copy)]
+pub struct RunProgress {
+    pub game_mode: GameMode,
+    pub score: usize,
+    /// Lives left. Meaningless in a timed mode, which stores zero.
+    pub lives: usize,
+}
+
 /// A run in progress, kept across reloads.
 ///
-/// Only the mode and the score are stored, because the score is what the level
-/// is derived from and the board is generated fresh every round anyway — there
-/// is no position to restore, only a place in the curve. Storing the whole
-/// `GameHistory` would persist a list of past rounds nobody comes back for.
+/// The board is not stored, because it is generated fresh every round anyway —
+/// there is no position to restore, only a place in the curve, which the score
+/// is what carries. The lives are here for the opposite reason: they are the
+/// one piece of run state the score cannot be derived from, and without them
+/// the way to survive a bad round would be to close the tab.
 #[derive(Resource, Debug, Default)]
 pub struct SavedRun {
-    run: Option<(GameMode, usize)>,
+    run: Option<RunProgress>,
 }
 
 impl SavedRun {
-    pub fn get(&self) -> Option<(GameMode, usize)> {
+    pub fn get(&self) -> Option<RunProgress> {
         self.run
     }
 
     /// Records where the run has got to. A score of zero is not worth coming
     /// back to, so it clears instead — otherwise the menu would offer to resume
     /// a run the player never started scoring in.
-    pub fn store(&mut self, mode: GameMode, score: usize) {
+    pub fn store(&mut self, game_mode: GameMode, score: usize, lives: usize) {
         if score == 0 {
             self.clear();
             return;
         }
 
-        self.run = Some((mode, score));
-        storage::save(RUN_KEY, &format!("{}={}", mode.storage_key(), score));
+        // A run with no lives left is already lost. There is a beat between the
+        // last life going and the summary screen clearing this, and a tab
+        // closed inside it should not come back as a run that cannot be played.
+        if game_mode.starting_lives().is_some() && lives == 0 {
+            self.clear();
+            return;
+        }
+
+        self.run = Some(RunProgress {
+            game_mode,
+            score,
+            lives,
+        });
+        storage::save(
+            RUN_KEY,
+            &format!("{}={}:{}", game_mode.storage_key(), score, lives),
+        );
     }
 
     pub fn clear(&mut self) {
@@ -148,7 +173,15 @@ impl SavedRun {
             return Self::default();
         };
 
-        let Ok(score) = value.trim().parse::<usize>() else {
+        // `score:lives`, with the lives optional: a save written before lives
+        // existed is just a score, and resuming it with a full complement is
+        // the friendlier of the two readings.
+        let (score, lives) = match value.trim().split_once(':') {
+            Some((score, lives)) => (score, Some(lives)),
+            None => (value.trim(), None),
+        };
+
+        let Ok(score) = score.trim().parse::<usize>() else {
             return Self::default();
         };
 
@@ -157,7 +190,19 @@ impl SavedRun {
         let run = GameMode::iter()
             .find(|mode| mode.storage_key() == key.trim())
             .filter(|_| score > 0)
-            .map(|mode| (mode, score));
+            .map(|game_mode| {
+                let full = game_mode.starting_lives().unwrap_or(0);
+                let lives = lives
+                    .and_then(|lives| lives.trim().parse::<usize>().ok())
+                    .unwrap_or(full)
+                    .min(full);
+
+                RunProgress {
+                    game_mode,
+                    score,
+                    lives,
+                }
+            });
 
         Self { run }
     }

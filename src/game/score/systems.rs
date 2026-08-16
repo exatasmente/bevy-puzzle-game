@@ -12,22 +12,24 @@ pub fn load_best_scores(mut best_scores: ResMut<BestScores>, mut saved_run: ResM
 
 /// Keeps the stored run in step with the one being played.
 ///
-/// Written when the score changes rather than when the player leaves, because
-/// the way a browser game ends is usually a closed tab: there is no exit to
-/// hook.
+/// Written when the run's state changes rather than when the player leaves,
+/// because the way a browser game ends is usually a closed tab: there is no
+/// exit to hook. Lives are watched alongside the score, since a miss moves one
+/// and not the other — keyed on the score alone, a run resumed after a bad
+/// round would come back with the lives it had before it.
 pub fn remember_run(
     puzzle: Res<ColorPuzzle>,
     mut saved_run: ResMut<SavedRun>,
-    mut last_score: Local<Option<usize>>,
+    mut last: Local<Option<(usize, usize)>>,
 ) {
-    let score = puzzle.get_score();
+    let progress = (puzzle.get_score(), puzzle.lives());
 
-    if *last_score == Some(score) {
+    if *last == Some(progress) {
         return;
     }
 
-    *last_score = Some(score);
-    saved_run.store(puzzle.game_mode, score);
+    *last = Some(progress);
+    saved_run.store(puzzle.game_mode, progress.0, progress.1);
 }
 
 /// Called once as a run ends. Stores the result and works out whether it was a

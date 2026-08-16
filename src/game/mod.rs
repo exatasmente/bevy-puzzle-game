@@ -13,8 +13,6 @@ pub struct GamePlugin;
 impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
         app
-            .add_plugin(GameUIPlugin)
-            .add_plugin(ScorePlugin)
-            .add_plugin(PuzzlePlugin);
+            .add_plugins((GameUIPlugin, ScorePlugin, PuzzlePlugin));
     }
 }

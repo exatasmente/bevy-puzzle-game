@@ -8,26 +8,21 @@ use crate::pagination::Pagination;
 pub fn spawn_game_history_menu(
     mut commands: Commands,
     mut pagination: ResMut<Pagination>,
-    mut spawn_pagination_event_writer: EventWriter<SpawnPaginationEvent>,
+    mut spawn_pagination_event_writer: MessageWriter<SpawnPaginationEvent>,
 ) {
     commands
         .spawn((
-            NodeBundle {
-                style: HISTORY_MENU_STYLE,
-                background_color: SCRIM.into(),
-                z_index: ZIndex::Local(2),
-                ..default()
-            },
+            (
+                history_menu_style(),
+                BackgroundColor(SCRIM),
+                ZIndex(2),
+            ),
             GameHistoryMenu,
         ))
         .with_children(|parent| {
             let pagination_container = parent
                 .spawn((
-                    NodeBundle {
-                        style: HISTORY_MENU_CONTAINER_STYLE,
-                        background_color: SURFACE.into(),
-                        ..default()
-                    },
+                    (history_menu_container_style(), BackgroundColor(SURFACE)),
                     PaginationContainer,
                 ))
                 .id();
@@ -35,7 +30,7 @@ pub fn spawn_game_history_menu(
             pagination.set_entity(pagination_container);
         });
 
-    spawn_pagination_event_writer.send(SpawnPaginationEvent);
+    spawn_pagination_event_writer.write(SpawnPaginationEvent);
 }
 
 pub fn despawn_game_history_menu(
@@ -44,7 +39,7 @@ pub fn despawn_game_history_menu(
     mut pagination: ResMut<Pagination>,
 ) {
     for entity in game_history_menu_query.iter() {
-        commands.entity(entity).despawn_recursive();
+        commands.entity(entity).despawn();
     }
 
     pagination.clear_entity();

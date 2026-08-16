@@ -9,6 +9,7 @@ use bevy::prelude::*;
 use crate::feedback::PopAnim;
 use crate::game::puzzle::components::{ColorPuzzle, GameHistory, GameTimer};
 use crate::game::ui::hud::components::*;
+use crate::game::ui::hud::styles::LIVES_PIP_SPENT_COLOR;
 use crate::theme;
 
 /// Seconds left at which the timer starts warning.
@@ -40,7 +41,7 @@ pub fn update_score_text(
 ) {
     let target = puzzle.get_score();
 
-    let Ok((entity, mut text)) = query.get_single_mut() else {
+    let Ok((entity, mut text)) = query.single_mut() else {
         return;
     };
 
@@ -59,7 +60,7 @@ pub fn update_score_text(
     if (*displayed - target_f32).abs() > 0.01 {
         let remaining = target_f32 - *displayed;
         let rate = SCORE_COUNT_SPEED.max(remaining / MAX_COUNT_SECONDS);
-        let step = rate * time.delta_seconds();
+        let step = rate * time.delta_secs();
         *displayed = if *displayed < target_f32 {
             (*displayed + step.max(0.2)).min(target_f32)
         } else {
@@ -67,18 +68,18 @@ pub fn update_score_text(
         };
     }
 
-    text.sections[0].value = format!("{}", displayed.round() as usize);
+    text.0 = format!("{}", displayed.round() as usize);
 }
 
 pub fn update_streak_text(
     mut commands: Commands,
     game_history: Res<GameHistory>,
     mut last_streak: Local<usize>,
-    mut query: Query<(Entity, &mut Text), With<StreakValueText>>,
+    mut query: Query<(Entity, &mut Text, &mut TextColor), With<StreakValueText>>,
 ) {
     let streak = game_history.current_streak();
 
-    let Ok((entity, mut text)) = query.get_single_mut() else {
+    let Ok((entity, mut text, mut text_color)) = query.single_mut() else {
         return;
     };
 
@@ -89,10 +90,10 @@ pub fn update_streak_text(
         *last_streak = streak;
     }
 
-    text.sections[0].value = format!("x{}", streak);
+    text.0 = format!("x{}", streak);
     // A live streak is lit; a broken one goes grey. The player should be able
     // to see, without reading, that they just lost something.
-    text.sections[0].style.color = if streak == 0 {
+    text_color.0 = if streak == 0 {
         theme::MUTED
     } else {
         theme::SUCCESS
@@ -103,28 +104,28 @@ pub fn update_timer_text(
     puzzle: Res<ColorPuzzle>,
     game_timer: Res<GameTimer>,
     time: Res<Time>,
-    mut query: Query<&mut Text, With<TimerValueText>>,
+    mut query: Query<(&mut Text, &mut TextColor), With<TimerValueText>>,
 ) {
-    let Ok(mut text) = query.get_single_mut() else {
+    let Ok((mut text, mut text_color)) = query.single_mut() else {
         return;
     };
 
     if !puzzle.game_mode.is_timed() {
-        text.sections[0].value = "--".to_string();
-        text.sections[0].style.color = theme::MUTED;
+        text.0 = "--".to_string();
+        text_color.0 = theme::MUTED;
         return;
     }
 
     let remaining = game_timer.timer.remaining_secs();
-    text.sections[0].value = format!("{:02.0}", remaining);
+    text.0 = format!("{:02.0}", remaining);
 
-    text.sections[0].style.color = if remaining <= CRITICAL_SECONDS {
+    text_color.0 = if remaining <= CRITICAL_SECONDS {
         // Pulse: urgency the player feels before they finish reading the number.
-        let pulse = (time.elapsed_seconds() * 12.0).sin() * 0.5 + 0.5;
-        Color::rgb(
-            theme::DANGER.r(),
-            theme::DANGER.g() * (0.4 + 0.6 * pulse),
-            theme::DANGER.b() * (0.4 + 0.6 * pulse),
+        let pulse = (time.elapsed_secs() * 12.0).sin() * 0.5 + 0.5;
+        Color::srgb(
+            theme::DANGER.to_srgba().red,
+            theme::DANGER.to_srgba().green * (0.4 + 0.6 * pulse),
+            theme::DANGER.to_srgba().blue * (0.4 + 0.6 * pulse),
         )
     } else if remaining <= WARNING_SECONDS {
         theme::ACCENT
@@ -133,19 +134,74 @@ pub fn update_timer_text(
     };
 }
 
-pub fn update_level_progress(
+/// Lights the first `lives` markers and dims the rest.
+///
+/// Deliberately not a banner. A miss already holds the board so the answer can
+/// be shown, and a caption thrown across the middle of the screen would cover
+/// exactly the thing the hold exists to reveal — the same reason the streak
+/// messages were taken out. The last life announces itself by pulsing in the
+/// HUD instead, where it is out of the board's way.
+pub fn update_lives_pips(
+    mut commands: Commands,
     puzzle: Res<ColorPuzzle>,
-    mut fill_query: Query<&mut Style, With<LevelProgressFill>>,
-    mut level_query: Query<&mut Text, With<LevelValueText>>,
+    time: Res<Time>,
+    mut last_lives: Local<Option<usize>>,
+    mut query: Query<(Entity, &LivesPip, &mut BackgroundColor)>,
 ) {
-    if let Ok(mut style) = fill_query.get_single_mut() {
-        style.size.width = Val::Percent(puzzle.progress_to_next_level() * 100.0);
+    let lives = puzzle.lives();
+
+    // The marker that just went out is the one at the new count, counting from
+    // zero. Punching it is what makes the loss register as an event rather than
+    // as a square that was always that colour.
+    let just_lost = match *last_lives {
+        Some(previous) if lives < previous => Some(lives),
+        _ => None,
+    };
+
+    if *last_lives != Some(lives) {
+        *last_lives = Some(lives);
     }
 
-    if let Ok(mut text) = level_query.get_single_mut() {
+    let critical = lives == 1;
+
+    for (entity, pip, mut color) in query.iter_mut() {
+        if pip.index >= lives {
+            *color = LIVES_PIP_SPENT_COLOR.into();
+
+            if just_lost == Some(pip.index) {
+                commands.entity(entity).insert(PopAnim::small());
+            }
+
+            continue;
+        }
+
+        *color = if critical {
+            let pulse = (time.elapsed_secs() * 12.0).sin() * 0.5 + 0.5;
+            Color::srgb(
+                theme::DANGER.to_srgba().red,
+                theme::DANGER.to_srgba().green * (0.4 + 0.6 * pulse),
+                theme::DANGER.to_srgba().blue * (0.4 + 0.6 * pulse),
+            )
+        } else {
+            theme::DANGER
+        }
+        .into();
+    }
+}
+
+pub fn update_level_progress(
+    puzzle: Res<ColorPuzzle>,
+    mut fill_query: Query<&mut Node, With<LevelProgressFill>>,
+    mut level_query: Query<&mut Text, With<LevelValueText>>,
+) {
+    if let Ok(mut style) = fill_query.single_mut() {
+        style.width = Val::Percent(puzzle.progress_to_next_level() * 100.0);
+    }
+
+    if let Ok(mut text) = level_query.single_mut() {
         // Naming the remaining distance is what turns a bar into a goal. There
         // is no last level any more, so there is no "MAXIMO" case to fall to.
-        text.sections[0].value = format!(
+        text.0 = format!(
             "NIVEL {}   FALTAM {}",
             puzzle.level(),
             puzzle.points_to_next_level()

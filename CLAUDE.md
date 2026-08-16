@@ -4,7 +4,7 @@ Guidance for AI assistants working in this repository.
 
 ## What this project is
 
-A color-discrimination puzzle game ("Color Puzzle") built with **Bevy 0.10** in Rust.
+A color-discrimination puzzle game ("Color Puzzle") built with **Bevy 0.19** in Rust.
 The board is a honeycomb of **congruent regular hexagons**. Some cells are empty and
 simply show the ground; the filled ones are grouped into blobs of colour, and the
 board reads as a mosaic. One filled cell wears its group's colour moved by the level's
@@ -76,22 +76,56 @@ CI (`.github/workflows/rust.yml`) runs `cargo build --verbose` and
 default branch here is **`master`**, so CI does not currently fire for normal work.
 
 Native Linux builds need Bevy's system deps (`libasound2-dev`, `libudev-dev`,
-`pkg-config`, `build-essential`) — see `.devcontainer/setup.sh`. Without them the
-build dies in the `alsa-sys` build script with "The system library `alsa` ... was not
-found". That is an environment problem, not a code problem.
+`libwayland-dev`, `libxkbcommon-dev`, `pkg-config`, `build-essential`) — see
+`.devcontainer/setup.sh`. Without them the build dies in a `*-sys` build script with
+"The system library `alsa` ... was not found" or the equivalent for wayland. That is
+an environment problem, not a code problem. The two wayland/xkb packages became
+required at 0.19, through `accesskit_winit → winit`, and are needed **regardless of
+which windowing feature is on** — an X11-only build wants them too.
+
+Also note the toolchain floor: **rustc 1.95**, for bevy 0.19.1.
 
 **Checking without those packages.** In a sandbox that cannot install them, you can
-still type-check, because `cargo check` never links. Write stub `alsa.pc` and
-`libudev.pc` files into a directory and point pkg-config at it:
+still type-check, because `cargo check` never links. Write stub `.pc` files into a
+directory and point pkg-config at it. Seven are needed now: `alsa`, `libudev`,
+`wayland-client`, `wayland-cursor`, `wayland-egl`, `xkbcommon` and `libdecor-0`.
+
+**The `Libs:` line must name the real library, not the package.** `alsa.pc` links
+`-lasound` and `libudev.pc` links `-ludev`; a stub that echoes the package name
+type-checks fine and then fails at link with "unable to find library -lalsa", which
+looks like a missing package rather than a bad stub. Measured the hard way.
 
 ```bash
-# minimal .pc: prefix/libdir/includedir + Name/Description/Version/Libs/Cflags
-PKG_CONFIG_PATH=/path/to/stubs cargo check
+write_pc() {  # write_pc <pkg-name> <library-name>
+  printf 'prefix=/usr\nexec_prefix=${prefix}\nlibdir=${prefix}/lib\nincludedir=${prefix}/include\n\nName: %s\nDescription: stub\nVersion: 999.0\nLibs: -l%s\nCflags:\n' "$1" "$2" > stubs/$1.pc
+}
+write_pc alsa asound;                 write_pc libudev udev
+write_pc wayland-client wayland-client; write_pc wayland-cursor wayland-cursor
+write_pc wayland-egl wayland-egl;     write_pc xkbcommon xkbcommon
+write_pc libdecor-0 decor-0
+PKG_CONFIG_PATH=$PWD/stubs cargo check
 ```
 
-To get as far as a linked binary, the runtime libraries usually exist even when the
-`-dev` packages don't; symlink `libasound.so.2` → `libasound.so` and `libudev.so.1` →
-`libudev.so` into a directory and add `RUSTFLAGS="-L /that/dir"` to `cargo build`.
+`cargo check --target wasm32-unknown-unknown` needs none of this — it is worth running
+on its own, because it is the build that actually ships and `uuid`/`getrandom` only
+break there.
+
+**To get as far as a linked binary** — which `cargo test` needs, since it builds and
+runs a binary — the runtime libraries usually exist even when the `-dev` packages
+don't, but only under their versioned sonames. Symlink each to the bare `.so` name the
+linker asks for and add that directory to `RUSTFLAGS`. Only three are actually linked
+(alsa, udev, wayland-client); the rest are dlopened:
+
+```bash
+for f in libasound.so.2 libudev.so.1 libwayland-client.so.0 \
+         libwayland-cursor.so.0 libwayland-egl.so.1 libxkbcommon.so.0; do
+  ln -sf /usr/lib/x86_64-linux-gnu/$f linklibs/${f%.so.*}.so
+done
+PKG_CONFIG_PATH=$PWD/stubs RUSTFLAGS="-L $PWD/linklibs" cargo test
+```
+
+Note that changing `RUSTFLAGS` invalidates the cache and rebuilds all of Bevy, so set
+it on the first run rather than discovering you need it after a clean `cargo check`.
 
 **Linking is not running.** Bevy still needs a GPU adapter at startup and panics with
 "Unable to find a GPU!" without one. `xvfb-run` alone is not enough: wgpu needs either
@@ -112,8 +146,9 @@ compile; prefer the explicit `crate::game::ui::...` form in new code.
 
 ### App wiring (`src/main.rs`)
 
-Registers `AppState`, the two global events, and five plugins: `MainMenuPlugin`,
-`GamePlugin`, `WasmPlugin`, `FeedbackPlugin`, `InteractionAnimationPlugin`.
+Registers `AppState`, the two global events, and six plugins: `MainMenuPlugin`,
+`GamePlugin`, `WasmPlugin`, `FeedbackPlugin`, `GameAudioPlugin`,
+`InteractionAnimationPlugin`.
 `DefaultPlugins` is added
 *after* the custom plugins along with `ShapePlugin` (bevy_prototype_lyon). Window
 config lives here: `PresentMode::AutoNoVsync`, `fit_canvas_to_parent: true`, resize
@@ -168,7 +203,7 @@ src/
     puzzle/                   Core gameplay (see below)
     score/                    ScorePlugin — persisted per-mode BestScores, LastRunOutcome
     ui/
-      hud/                    Top bar: score, streak, timer, level bar, pause
+      hud/                    Top bar: score, streak, timer, pause; level bar and lives
       game_history_menu/      Pause screen: paginated round review, continue, end run
       game_over_menu/         End-of-run summary + "fim de jogo" interstitial
 assets/                       digital7mono.ttf, sfx/*.wav, buttons.png (unused)
@@ -248,6 +283,27 @@ canvas a frame or two after the main menu has already been built at Bevy's defau
   key for persisted bests, `is_timed()` and `hides_colors()` the behavior switches.
   Descriptions have about 25 characters before the type shrinks past reading size —
   shorten the string rather than the floor.
+- **Every mode charges a miss, and exactly one way.** Missing used to be free
+  everywhere — nothing subtracted, and `tick_game_timer` even pauses the clock for the
+  length of the hold — so guessing beat looking. The untimed modes now run on
+  **lives** (`GameMode::starting_lives`, three), which is also the only thing that can
+  end a run in `Infinite`/`Memory`/`Mosaic`; the timed ones charge
+  `GameMode::miss_penalty_seconds` instead (3s / 2s), by winding the timer's *elapsed*
+  forward rather than shortening its duration, so `TimeTrial`'s bonus seconds keep
+  meaning what they meant. Never both in one mode: two falling numbers is one more
+  than the player can watch while reading a field of near-identical colours.
+  `every_mode_has_one_way_to_run_out` pins the split.
+  Lives live on `ColorPuzzle` rather than in a resource of their own, because
+  `setup(&mode)` is the single funnel all three run starts go through (the menu's play
+  button, "jogar novamente", a resumed run) — a separate resource would have to be
+  reset at each of them. A life comes back every `LEVELS_PER_EXTRA_LIFE` (5) levels,
+  capped, and rides on the level-up banner ("NIVEL 5  +1 VIDA") rather than sending a
+  second one, since `handle_banner_events` keeps only the newest. Losing one is
+  reported by the HUD pips alone — a centred banner would cover the answer reveal the
+  post-miss hold exists to show.
+  The run ends in `advance_pending_level`, when the hold expires, not at the pick: it
+  is the hold that shows the player what they missed, and a state change does not
+  apply until the next frame, so ending it inline would also deal a board nobody sees.
 - **`Mosaic`** — the odd-one-out asked as a pattern instead of a color. `src/wfc.rs`
   tiles the grid with pipe pieces whose edges must agree, then breaks exactly one.
   The tile set is deliberately incomplete (no dead ends, no crosses) — with a complete
@@ -270,15 +326,19 @@ canvas a frame or two after the main menu has already been built at Bevy's defau
   `player_interaction` refuses input while previewing, and repaints the true colors
   on a miss so a missed round still teaches.
 - **`GameTimer`** (Resource) — a single `Timer`; starts paused. When it finishes,
-  `tick_game_timer` transitions to `GameOverResume`. Infinite runs never expire, so
-  they end only via "ENCERRAR PARTIDA" on the pause screen.
+  `tick_game_timer` transitions to `GameOverResume`. Untimed runs never expire; they
+  end by running out of lives, or via "ENCERRAR PARTIDA" on the pause screen.
 - **`SavedRun`** (Resource, `src/game/score/`) — the run in progress, persisted as
-  `mode=score`. Only those two values: the score is where the level, the piece count
-  and the color distance all come from, and the board is dealt fresh every round, so
-  there is no position to restore — only a place in the curve. Written whenever the
-  score changes rather than on exit, because the way a browser game ends is a closed
-  tab. Cleared when a run finishes. The main menu offers it as a `CONTINUAR` card
-  above the mode list.
+  `mode=score:lives`. The board is not stored: it is dealt fresh every round, so there
+  is no position to restore — only a place in the curve, which the score carries. The
+  lives are there for the opposite reason, being the one piece of run state the score
+  cannot be derived from; without them the way to survive a bad round would be to
+  close the tab. Written whenever score *or* lives change rather than on exit, because
+  the way a browser game ends is a closed tab. A save with no lives left is dropped
+  rather than stored, and `restore_lives` floors at one — a resumed run with zero
+  could never end, since only a miss ends one. The old `mode=score` format still
+  loads, resuming at a full complement. Cleared when a run finishes. The main menu
+  offers it as a `CONTINUAR` card above the mode list.
 - **`BestScores`** (Resource, `src/game/score/`) — per-mode personal bests, loaded at
   startup and saved on each run end. `LastRunOutcome` carries score/best/is_record to
   the game-over screen; the screen orders itself `.after(RecordOutcomeSet)` so it
@@ -339,8 +399,11 @@ nodes because Bevy's layout owns only `Transform::translation`), `spawn_floating
 `ScreenShakeEvent` / `ScreenShake` (on the camera, next to `BackgroundTranstion`),
 `BannerEvent` for level ups, and `RevealIn` for staggered text. Streak *messages* were
 removed on purpose — the HUD's "SEQ" counter and the summary's "MAIOR SEQUENCIA" stay,
-because those are numbers rather than interruptions. `BannerEvent` is now only ever a
-level up, which is why `audio.rs` can play the level sound off it without filtering.
+because those are numbers rather than interruptions — and why losing a life is
+reported by the HUD pips rather than a banner. `BannerEvent` is still only ever a
+level up (the regained life is folded into that banner's text), which is why
+`audio.rs` can play the level sound off it without filtering. Any genuinely new
+banner type has to filter `play_level_sound`, or it will chime like a level up.
 `src/interaction_animation.rs` consumes `InteractionAnimationEvent` and renders the
 per-pick response: green ring and "+1" on a hit, red cross plus shake and a blinking
 outline over the correct square on a miss.
@@ -349,16 +412,24 @@ The event carries `scored`, `bonus_seconds` and `correct_position` precisely so 
 miss can look different — if you add a new outcome, extend the event rather than
 inferring the result downstream.
 
-Rendering uses **bevy_prototype_lyon** `ShapeBundle` + `Fill`, not sprites. A piece is a
+Rendering uses **bevy_prototype_lyon**, not sprites. `Fill` and `Stroke` are no longer
+components: the component is `Shape { path, fill: Option<Fill>, stroke: Option<Stroke> }`,
+built with `ShapeBuilder::with(&geometry).fill(..).build()` and spawned alongside its own
+`Transform`. Writing `shape.fill` / `shape.stroke` propagates to the mesh, which is how
+`hide_memory_board` and the pick animations repaint. A piece is a
 polygon whose `Transform` is its *centre* and whose `corners` are relative to it — not
 the bottom-left origin the old squares used. Depth is handled by incrementing `z` by 0.1
 per piece.
 
-**Pointer coordinates.** Bevy 0.10's `viewport_to_world_2d` maps its argument straight
-to NDC without flipping y, so it wants a bottom-left origin — which is what
-`Window::cursor_position` gives. Touches are the exception: `bevy_winit` passes them
-through in winit's top-left convention, so `player_interaction` flips those before
-converting. Getting this wrong mirrors every pick vertically.
+**Pointer coordinates.** Everything is top-left now and nothing is flipped.
+`viewport_to_ndc` flips y itself, so `viewport_to_world_2d` wants a *top-left* origin;
+both `Window::cursor_position` and `Touches` hand winit's top-left positions straight
+through. `player_interaction` therefore passes either one in unchanged.
+
+This inverted at 0.13, and it is the one change in the port that compiles clean and
+fails silently: under 0.10 the cursor was bottom-left and the touch branch had to flip.
+Keeping either flip against 0.19 mirrors every pick vertically with no compiler
+complaint, so it was fixed in a commit of its own to keep it visible in the diff.
 
 The background is the camera clear color, and in the color modes it *is* the answer.
 `BackgroundTranstion` (`src/systems.rs`, spawned on the camera entity) holds a **path**
@@ -381,10 +452,49 @@ twice for one mistake.
 
 ## Conventions and gotchas
 
-- Bevy **0.10** API specifically: `add_system(x.in_schedule(OnEnter(S)))`,
-  `.in_set(OnUpdate(S))`, `Interaction::Clicked` (not `Pressed`), `Style::size` with
-  `Size::new(...)`, `app_state.0` to read the current state. Do not port code from
-  0.11+ examples without translating it.
+- Bevy **0.19** API specifically. The idioms this tree uses, and the 0.10 forms
+  they replaced (the port from 0.10 landed in one commit; anything below that
+  still reads like the left-hand column is a leftover):
+
+  | 0.10 | 0.19 |
+  | --- | --- |
+  | `add_system(x.in_schedule(OnEnter(S)))` | `add_systems(OnEnter(S), x)` |
+  | `add_system(x)` / `add_startup_system(x)` | `add_systems(Update, x)` / `add_systems(Startup, x)` |
+  | `(a, b).in_set(OnUpdate(S))` | `(a, b).run_if(in_state(S))` |
+  | `.in_base_set(CoreSet::PostUpdate)` | `add_systems(PostUpdate, x)` |
+  | `add_plugin(P)` / `add_state::<S>()` | `add_plugins(P)` / `init_state::<S>()` |
+  | `add_event::<E>()`, `EventReader/Writer` | `add_message::<E>()`, `MessageReader/Writer`, `#[derive(Message)]` |
+  | `events.iter()` / `writer.send(e)` | `events.read()` / `writer.write(e)` |
+  | `Interaction::Clicked` | `Interaction::Pressed` |
+  | `Style` + `Size::new(w, h)` | `Node` with `width`/`height` (and `min_*`, `column_gap`/`row_gap`) |
+  | `NodeBundle`/`ButtonBundle`/`TextBundle` | component tuples; `Button` is its own marker |
+  | `Text` with `sections` | `Text` (the string) + sibling `TextColor`, `TextFont`; runs are `TextSpan` children |
+  | `Text2dBundle` | `Text2d` + the same sibling components |
+  | `ZIndex::Global(n)` | `GlobalZIndex(n)` |
+  | `app_state.0` | `*app_state.get()` |
+  | `query.single()` | returns `Result` — `let Ok(x) = ... else { return; }` |
+  | `viewport_to_world_2d` → `Option` | → `Result` |
+  | `Camera2dBundle`, `Camera2d.clear_color` | `Camera2d` marker; `clear_color` is on `Camera` |
+  | `Color::rgb`, `color.set_a(a)` | `Color::srgb`, `color.set_alpha(a)`; channels via `to_srgba()` |
+  | `Time::delta_seconds` | `Time::delta_secs` |
+  | `Timer::finished/percent/paused` | `is_finished`/`fraction`/`is_paused` |
+  | `Input<T>` | `ButtonInput<T>` |
+  | `ChildBuilder` | `ChildSpawnerCommands` |
+  | `despawn_recursive()` / `despawn_descendants()` | `despawn()` (recursive by default) / `despawn_related::<Children>()` |
+  | `KeyCode::G` | `KeyCode::KeyG` |
+  | `AppExit` (unit) | `AppExit::Success` |
+  | `Node` style consts | `Node` owns `Vec` fields, so it has a destructor and **cannot be a `const`** — these are functions |
+
+  Do not port code from 0.10-era examples without translating it.
+- **The toolchain floor is rustc 1.95** (bevy 0.19.1). An older container needs
+  `rustup update stable` before anything here will build.
+- **`x11` and `wayland` are no longer Bevy default features.** `Cargo.toml` turns
+  both on explicitly; without at least one, a Linux build compiles and then has no
+  windowing backend to open a window with.
+- **`libwayland-dev` and `libxkbcommon-dev` are build dependencies on Linux now.**
+  They come in through `accesskit_winit → winit`, independent of which of the two
+  backend features are enabled, so they are needed even for an X11-only build.
+  `.devcontainer/setup.sh` installs them.
 - Event readers overwhelmingly use `events.iter().next()` and process only the first
   event per frame. That is the established pattern here; it also means bursts of
   events get dropped. Preserve it unless a bug specifically requires draining.
@@ -392,8 +502,12 @@ twice for one mistake.
   `BackgroundTranstion`, `HistoryButtom`, `HistoryBackButtom`, `last_interraction_event_writer`.
   Rename only deliberately and repo-wide.
 - All colors, font sizes and spacing come from `src/theme.rs`. Feature `styles.rs`
-  files re-export from it and keep only their own layout `Style` consts — do not
-  reintroduce per-screen palettes.
+  files re-export from it and keep only their own layout `Node` builders — do not
+  reintroduce per-screen palettes. Note these are **functions, not consts**: `Node`
+  owns `Vec` fields for grid tracks, so it has a destructor and cannot be a `const`.
+  `theme::TextStyle` is likewise ours, not Bevy's — it keeps font, size and colour
+  together and splits into `TextFont` + `TextColor` once, inside the builders, which
+  is why the ~100 `theme::text` call sites needed no change in the port.
 - **Build every label with `theme::wrapped_text`, and size cards and buttons in
   pixels** (`theme::content_width` from the window width, `theme::button_style`).
   `digital7mono.ttf` draws well past the vertical metrics it reports, so wrapped lines
@@ -406,12 +520,18 @@ twice for one mistake.
   render as blanks. Write "HISTORICO", "SEQUENCIA", "OK"/"X".
 - Interactive elements are at least `theme::TOUCH_TARGET` (48px) in both axes; the
   game is played on phones.
-- `Cargo.lock` is gitignored, so dependency versions float within their semver
-  ranges — an unexpected build break may be an upstream release, not your change.
-- `bevy_rapier2d`, `bevy-inspector-egui`, `lazy_static` and `wasm-bindgen` are
-  declared in `Cargo.toml` but unused in `src/`. They still cost build time.
-  `web-sys` is declared under a `cfg(target_arch = "wasm32")` target table and is
-  used only by `src/storage.rs`.
+- `Cargo.lock` **is committed** — this is an executable, not a library. It used to be
+  gitignored, which meant the versions floated within their semver ranges and an
+  unexplained break could be an upstream release rather than a local change.
+- **Two dependencies are named nowhere in `src/` and must stay anyway.** `uuid` and
+  `getrandom`, both under the `cfg(target_arch = "wasm32")` target table, exist only to
+  turn on a feature a transitive dependency needs in order to build for the browser.
+  Removing them fails the wasm build with "specify a source of randomness"; it does not
+  fail the native one, so `cargo check` alone will not catch it — check with
+  `cargo check --target wasm32-unknown-unknown`, which needs no GPU and no system deps.
+  `web-sys`, in the same table, is genuinely used, by `src/storage.rs`.
+  (`bevy_rapier2d`, `bevy-inspector-egui`, `lazy_static`, `wasm-bindgen` and
+  `bevy_utils` really were unused, and are gone.)
 - Tests live in `src/wfc.rs`, `src/board.rs`, `src/mosaic_pattern.rs` and
   `src/game/puzzle/components.rs`, and they cover generator invariants rather than Bevy
   wiring. That split is deliberate: the generators are pure and their guarantees *are*
@@ -419,7 +539,12 @@ twice for one mistake.
 - No `rustfmt.toml`/`clippy.toml`, and formatting in the tree is inconsistent (mixed
   indentation, trailing whitespace). Running `cargo fmt` across the repo would produce
   a huge unrelated diff — format only what you touch.
-- **Never despawn a live `Button` from a system in `Update`.** Bevy 0.10's
+- **Never despawn a live `Button` from a system in `Update`. (A VERIFICAR against
+  0.19.)** The workaround is still in the tree — `relayout_*` and
+  `spawn_pagination_itens` still run in `PostUpdate` — but the reasoning below is
+  Bevy 0.10's and has not been retested since the port. Do not delete it on the
+  strength of the code compiling; the failure was a runtime panic, so only a run in
+  the browser settles it. Bevy 0.10's
   `bevy_ui::accessibility::button_changed` is registered with a plain `add_system`, so
   it sits unordered in `Update` and queues an `insert(AccessibilityNode)` for every
   button it has not tagged. A despawn queued earlier in that schedule is applied
@@ -429,11 +554,14 @@ twice for one mistake.
   in `CoreSet::PostUpdate`. There is no way to switch the a11y systems off — `bevy_ui`
   depends on `bevy_a11y` unconditionally and adds the plugin itself. Despawning on
   `OnExit` is fine: that runs in `StateTransition`, a schedule earlier in the frame.
-- **Sound uses Bevy 0.10's audio API**, which is `Res<Audio>` +
-  `audio.play_with_settings(handle, PlaybackSettings::ONCE.with_volume(..))`.
-  `AudioBundle`, which every current example and every LLM reaches for, arrived in 0.12
-  and does not exist here. `Cargo.toml` enables the `wav` feature — the default set is
-  Ogg only.
+- **Sound is played by spawning an entity** carrying `AudioPlayer(handle)` and
+  `PlaybackSettings`. `AudioSink` is a **component** Bevy adds to that same entity once
+  the source has loaded — it is not an asset, so there is no `Assets<AudioSink>`, no
+  handle to keep alive and nothing to upgrade. Stopping a track is despawning its
+  entity; one-shots use `PlaybackMode::Despawn` so they clean themselves up.
+  `bevy::audio::Volume` is a type (`Volume::Linear(f32)`), not an `f32` — and it is
+  *not* this crate's `audio::Volume` resource, which is the player-facing setting.
+  `Cargo.toml` enables the `wav` feature — the default set is Ogg only.
 - **On iOS the side switch silences the game, and nothing in the page reports it.**
   Web Audio runs under the "ambient" audio session by default, so an iPhone with the
   Ring/Silent switch set to silent plays nothing — no error, no console warning, no
@@ -447,15 +575,15 @@ twice for one mistake.
 - **The browser needs the shim in `docs/index.html` to make any sound at all.** Chrome
   builds an `AudioContext` created before a user gesture in the `suspended` state and
   leaves it there until something calls `resume()` from inside a gesture handler. Bevy
-  0.10 builds its context at startup, from cpal, and never calls `resume`; nothing in
-  the Rust code can reach it. So the page wraps the `AudioContext` constructor before
+  builds its context at startup, from cpal, and never calls `resume`; nothing in
+  the Rust code can reach it. (Still true at 0.19 — the shim is not a 0.10 leftover.) So the page wraps the `AudioContext` constructor before
   loading the module, keeps the instances, and resumes them on the first input. Two
   details are load bearing: the script must come **before** the `import init` module,
   because the wrap has to be in place when Bevy constructs the context; and the
   listeners are on `window` in the **capture** phase, because winit binds the canvas and
   stops the event there, so a bubbling listener never runs. Without the capture flag the
   context stays suspended through every tap — measured, not assumed. Chrome still logs
-  its autoplay warning at startup; that part is unavoidable in 0.10.
+  its autoplay warning at startup; that part is unavoidable.
 - Sounds live in `assets/sfx/` and are **synthesised** by `tools/make_sounds.py` (pure
   stdlib, no dependencies) so the repo owns them outright — nothing to re-source, no
   licence to track. Regenerate rather than hand-editing the WAVs. That includes the
@@ -467,8 +595,8 @@ twice for one mistake.
   board needs.
 - **Sound level is one setting with steps, not a mute flag.** `audio::Volume` is 0..=4;
   0 is off, and everything the game plays is scaled by `Volume::scale()`. The pause
-  screen's one button cycles down and wraps — Bevy 0.10 has no slider, and a drag target
-  is the wrong shape for a thumb. `Volume::load` **ignores** the old
+  screen's one button cycles down and wraps — a drag target is the wrong shape for a
+  thumb. `Volume::load` **ignores** the old
   `color_puzzle.muted` key it replaced, and that is deliberate: the old control was a
   two-state toggle cheap to tap out of curiosity, so browsers have `muted=1` left in them
   from a single idle press. Honouring it started the game silent, and with the pause
@@ -478,13 +606,14 @@ twice for one mistake.
 - **Music is reconciled, not triggered.** `audio.rs::reconcile_music` computes the
   wanted track each frame from `AppState` and `Volume` and switches if it differs — one
   system covering both screen changes and the mute button, with no ordering between
-  them. Two Bevy 0.10 traps, both silent rather than compile errors:
-  `play_with_settings` returns a **weak** handle and `AudioSink::drop` calls `detach()`,
-  so letting a *looping* handle go means music forever with nothing able to stop it —
-  upgrade with `sinks.get_handle(...)` immediately and hold it in a resource. And the
-  sink asset does not exist until `play_queued_audio_system` has run, so `sinks.get`
-  returns `None` for a frame or two; a stop must keep retrying (`Music::stopping`)
-  rather than fire once. Only *silence* goes through the reconciler; every other level
+  them. `Music` holds the playing track's **entity**, and stopping is despawning it —
+  which lands whether or not the sink exists yet. Both 0.10 traps this used to
+  document (the weak handle that detached on drop, and the retry loop for the frame or
+  two before the sink asset appeared) went away with the asset-based `AudioSink`; the
+  `Music::stopping` field is gone with them. One residue survives: the `AudioSink`
+  *component* is still added a frame or two after the entity is spawned, so
+  `follow_volume` keeps reapplying the level until it takes.
+  Only *silence* goes through the reconciler; every other level
   change is applied to the live sink by `follow_volume`, because stopping and restarting
   would drop the player back to the top of the loop on every press.
 - **Do not gate a label on `Res<T>::is_changed()` when the writer is a sibling in the
@@ -492,7 +621,14 @@ twice for one mistake.
   *before* the writer in the very frame the value changes — and the flag is only set for
   that one frame, so the label never catches up. `update_sound_label` compares the string
   instead, which is immune to the ordering and still avoids re-laying out the text.
-- **KNOWN BUG: the pause and game-over screens do not repaint in the browser.** This is
+- **KNOWN BUG: the pause and game-over screens do not repaint in the browser.
+  (A VERIFICAR against 0.19.)** Everything below was measured against Bevy 0.10, and
+  the last line of it named the render graph and wgpu's WebGL surface as the remaining
+  suspects — both of which the port replaced wholesale. So this may well be gone. It
+  has not been retested; the next browser run should settle it, and if the screens
+  repaint, this whole entry goes.
+
+  This is
   what makes pagination, "menu principal" and "reiniciar" look like the game has hung.
   Native is unaffected.
 
@@ -540,9 +676,11 @@ panels a step above it (`SURFACE`, `SURFACE_RAISED`), and saturated accents —
 that ends a run, `SUCCESS`, `ACCENT`, `LIME`, `INFO`. Each `GameMode` owns one of them
 via `accent()`.
 
-Bevy 0.10's UI cannot stroke a node, so a border is a wrapper node painted in the
-border color with `HAIRLINE` padding, containing the real panel — see
-`theme::outlined_style`. Note that Taffy sizes the *content* box: a node at
+Borders are drawn as a wrapper node painted in the border color with `HAIRLINE`
+padding, containing the real panel — see `theme::outlined_style`. This dates from
+Bevy 0.10, whose UI could not stroke a node. 0.19 has `BorderColor`/`Node::border`, so
+the wrapper is no longer forced; it is simply what the tree still does, and collapsing
+it would touch every outlined panel, so it was left alone by the port. Note that Taffy sizes the *content* box: a node at
 `Percent(100)` with padding is wider than its parent, and a `Px` node's padding is
 added outside its width. Both mistakes push whole screens off the edge, and both were
 in this codebase.

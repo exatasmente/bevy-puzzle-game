@@ -5,16 +5,19 @@ use crate::theme;
 /// Side of the colored chip that identifies a mode.
 pub const MODE_CHIP_SIZE: f32 = 44.0;
 
-pub const MAIN_MENU_STYLE: Style = Style {
+pub fn main_menu_style() -> Node {
+    Node {
     flex_direction: FlexDirection::Column,
     justify_content: JustifyContent::Center,
     align_items: AlignItems::Center,
-    size: Size::new(Val::Percent(100.0), Val::Percent(100.0)),
+    width: Val::Percent(100.0),
+    height: Val::Percent(100.0),
     // No horizontal padding: Taffy sizes the content box, so a node at 100%
     // plus padding is wider than its parent and everything inside it slides
     // off the screen edge. The children carry their own width instead.
-    ..Style::DEFAULT
-};
+    ..Node::DEFAULT
+}
+}
 
 /// The wordmark block.
 ///
@@ -22,19 +25,20 @@ pub const MAIN_MENU_STYLE: Style = Style {
 /// menu has no scrolling and the mode list has grown to five: at the fixed
 /// sizes they used to have, the last card fell off the bottom of a 480px
 /// screen, which is the shortest window the app allows.
-pub fn title_style(window_height: f32) -> Style {
-    Style {
+pub fn title_style(window_height: f32) -> Node {
+    Node {
         flex_direction: FlexDirection::Column,
         justify_content: JustifyContent::Center,
         align_items: AlignItems::Center,
-        size: Size::new(Val::Percent(100.0), Val::Px((window_height * 0.14).clamp(70.0, 120.0))),
+        width: Val::Percent(100.0),
+        height: Val::Px((window_height * 0.14).clamp(70.0, 120.0)),
         margin: UiRect {
             left: Val::Px(0.0),
             right: Val::Px(0.0),
             top: Val::Px(0.0),
             bottom: Val::Px(theme::SPACE_SM),
         },
-        ..Style::DEFAULT
+        ..Node::DEFAULT
     }
 }
 
@@ -49,22 +53,24 @@ pub fn mode_card_height(window_height: f32, modes: usize) -> f32 {
 }
 
 /// The padded row inside a mode card: chip, then the text column.
-pub fn mode_card_inner_style(height: f32) -> Style {
-    Style {
-        min_size: Size::new(Val::Percent(100.0), Val::Px(height)),
+pub fn mode_card_inner_style(height: f32) -> Node {
+    Node {
+        min_width: Val::Percent(100.0),
+        min_height: Val::Px(height),
         ..theme::outlined_inner_style()
     }
 }
 
 /// The text column beside the chip.
-pub fn mode_card_text_style(width: f32) -> Style {
-    Style {
+pub fn mode_card_text_style(width: f32) -> Node {
+    Node {
         flex_direction: FlexDirection::Column,
         justify_content: JustifyContent::Center,
         align_items: AlignItems::Center,
-        size: Size::new(Val::Px(width), Val::Auto),
+        width: Val::Px(width),
+        height: Val::Auto,
         margin: UiRect::left(Val::Px(theme::SPACE_SM)),
-        ..Style::DEFAULT
+        ..Node::DEFAULT
     }
 }
 
@@ -84,25 +90,25 @@ pub fn mode_chip_size(card_height: f32) -> f32 {
 /// Dim at rest so four cards do not compete with each other; the interaction
 /// system brightens it on hover and press.
 pub fn card_border(accent: Color) -> Color {
-    Color::rgba(accent.r(), accent.g(), accent.b(), 0.45)
+    Color::srgba(accent.to_srgba().red, accent.to_srgba().green, accent.to_srgba().blue, 0.45)
 }
 
 pub fn card_border_hovered(accent: Color) -> Color {
-    Color::rgba(accent.r(), accent.g(), accent.b(), 0.75)
+    Color::srgba(accent.to_srgba().red, accent.to_srgba().green, accent.to_srgba().blue, 0.75)
 }
 
 pub fn card_border_pressed(accent: Color) -> Color {
     accent
 }
 
-pub fn get_mode_name_text_style(asset_server: &Res<AssetServer>) -> TextStyle {
+pub fn get_mode_name_text_style(asset_server: &Res<AssetServer>) -> theme::TextStyle {
     theme::text(asset_server, theme::TEXT_MD, theme::ON_SURFACE)
 }
 
-pub fn get_mode_description_text_style(asset_server: &Res<AssetServer>) -> TextStyle {
+pub fn get_mode_description_text_style(asset_server: &Res<AssetServer>) -> theme::TextStyle {
     theme::text(asset_server, theme::TEXT_XS, theme::MUTED)
 }
 
-pub fn get_best_score_text_style(asset_server: &Res<AssetServer>) -> TextStyle {
+pub fn get_best_score_text_style(asset_server: &Res<AssetServer>) -> theme::TextStyle {
     theme::text(asset_server, theme::TEXT_XS, theme::ACCENT)
 }
