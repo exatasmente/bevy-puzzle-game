@@ -9,9 +9,13 @@ version = "0.9.1"
 [dependencies]
 # `wav` is not in Bevy's default feature set (which covers Ogg only), and the
 # sounds in assets/sfx are WAV — see tools/make_sounds.py for why.
-bevy = { version = "0.10", features = ["wav"] }
-rand = "0.8"
-bevy_prototype_lyon = "0.8.0"
+#
+# `x11` and `wayland` are not defaults either, and without at least one of them
+# a Linux build compiles and then has no windowing backend to open a window
+# with. Both are on so one binary covers both session types.
+bevy = { version = "0.19", features = ["wav", "x11", "wayland"] }
+rand = "0.9"
+bevy_prototype_lyon = "0.17"
 
 # Browser-only. Used for localStorage, which is where best scores persist for
 # the build people actually play (GitHub Pages). Native builds keep bests in
