@@ -280,14 +280,11 @@ pub fn handle_banner_events(
 
     commands
         .spawn((
-            NodeBundle {
-                style: Style {
+            Style {
                     position_type: PositionType::Absolute,
                     size: Size::new(Val::Percent(100.0), Val::Percent(100.0)),
                     justify_content: JustifyContent::Center,
                     align_items: AlignItems::Center,
-                    ..default()
-                },
                 // Purely decorative: no `Interaction`, so it never eats a tap.
                 z_index: ZIndex::Global(50),
                 ..default()
@@ -297,14 +294,11 @@ pub fn handle_banner_events(
             },
         ))
         .with_children(|parent| {
-            parent.spawn(TextBundle {
-                text: Text::from_section(
-                    event.text.clone(),
-                    theme::text(&asset_server, event.size, event.color),
-                )
-                .with_alignment(TextAlignment::Center),
-                ..default()
-            });
+            parent.spawn(theme::wrapped_text(
+                event.text.clone(),
+                theme::text(&asset_server, event.size, event.color),
+                theme::CONTENT_MAX_WIDTH,
+            ));
         });
 }
 

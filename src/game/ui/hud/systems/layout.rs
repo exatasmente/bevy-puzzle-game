@@ -30,25 +30,15 @@ pub fn build_hud(
 ) -> Entity {
     commands
         .spawn((
-            NodeBundle {
-                style: HUD_ROOT_STYLE,
-                ..default()
-            },
+            hud_root_style(),
             HudRoot,
         ))
         .with_children(|parent| {
             parent
-                .spawn(NodeBundle {
-                    style: HUD_PANEL_STYLE,
-                    background_color: HUD_PANEL_COLOR.into(),
-                    ..default()
-                })
+                .spawn((hud_panel_style(), BackgroundColor(HUD_PANEL_COLOR)))
                 .with_children(|parent| {
                     parent
-                        .spawn(NodeBundle {
-                            style: TOP_BAR_STYLE,
-                            ..default()
-                        })
+                        .spawn((top_bar_style())
                         .with_children(|parent| {
                             // Each stat gets its own color, so the eye can find
                             // the one it wants without reading the labels.
@@ -84,11 +74,7 @@ pub fn build_hud(
                             // target.
                             parent
                                 .spawn((
-                                    ButtonBundle {
-                                        style: ICON_BUTTON_STYLE,
-                                        background_color: BUTTON.into(),
-                                        ..default()
-                                    },
+                                    (Button, icon_button_style(), BackgroundColor(BUTTON)),
                                     HistoryButtom,
                                 ))
                                 .with_children(|parent| {
@@ -106,10 +92,7 @@ pub fn build_hud(
 
                     // Level row: the current level and how close the next one is.
                     parent
-                        .spawn(NodeBundle {
-                            style: LEVEL_ROW_STYLE,
-                            ..default()
-                        })
+                        .spawn(level_row_style())
                         .with_children(|parent| {
                             parent.spawn((
                                 theme::wrapped_text(
@@ -128,18 +111,10 @@ pub fn build_hud(
                     // Goal gradient made visible: a bar that is visibly close to
                     // full pulls harder than an unmarked distance.
                     parent
-                        .spawn(NodeBundle {
-                            style: PROGRESS_TRACK_STYLE,
-                            background_color: PROGRESS_TRACK_COLOR.into(),
-                            ..default()
-                        })
+                        .spawn(progress_track_style(), BackgroundColor(PROGRESS_TRACK_COLOR)))
                         .with_children(|parent| {
                             parent.spawn((
-                                NodeBundle {
-                                    style: PROGRESS_FILL_STYLE,
-                                    background_color: theme::PRIMARY.into(),
-                                    ..default()
-                                },
+                                (progress_fill_style(), BackgroundColor(theme::PRIMARY)),
                                 LevelProgressFill,
                             ));
                         });
@@ -155,21 +130,12 @@ pub fn build_hud(
 /// between the builder and the updater.
 fn spawn_lives_row(parent: &mut ChildBuilder, lives: usize) {
     parent
-        .spawn((
-            NodeBundle {
-                style: LIVES_ROW_STYLE,
-                ..default()
-            },
-            LivesRow,
-        ))
+        .spawn((lives_row_style(), LivesRow))
         .with_children(|parent| {
             for index in 0..lives {
                 parent.spawn((
-                    NodeBundle {
-                        style: LIVES_PIP_STYLE,
-                        background_color: theme::DANGER.into(),
-                        ..default()
-                    },
+                    lives_pip_style(),
+                    BackgroundColor(theme::DANGER),
                     LivesPip { index },
                 ));
             }
@@ -178,11 +144,7 @@ fn spawn_lives_row(parent: &mut ChildBuilder, lives: usize) {
 
 /// A hairline between two stats.
 fn spawn_divider(parent: &mut ChildBuilder) {
-    parent.spawn(NodeBundle {
-        style: STAT_DIVIDER_STYLE,
-        background_color: theme::OUTLINE.into(),
-        ..default()
-    });
+    parent.spawn((stat_divider_style(), BackgroundColor(theme::OUTLINE)));
 }
 
 /// Widest a stat's label or value may be before it wraps. Stats flex, so this
@@ -198,10 +160,7 @@ fn spawn_stat<M: Component + Default>(
     value_color: Color,
 ) {
     parent
-        .spawn(NodeBundle {
-            style: STAT_STYLE,
-            ..default()
-        })
+        .spawn(stat_style())
         .with_children(|parent| {
             parent.spawn(theme::wrapped_text(
                 label,
@@ -222,20 +181,13 @@ fn spawn_stat<M: Component + Default>(
 pub fn spawn_back_button(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands
         .spawn((
-            NodeBundle {
-                style: BACK_BUTTON_ROOT_STYLE,
-                ..default()
-            },
+            back_button_root_style(),
             BackButtonRoot,
         ))
         .with_children(|parent| {
             parent
                 .spawn((
-                    ButtonBundle {
-                        style: theme::button_style(BACK_BUTTON_WIDTH),
-                        background_color: BUTTON.into(),
-                        ..default()
-                    },
+                    (Button, theme::button_style(BACK_BUTTON_WIDTH), BackgroundColor(BUTTON)),
                     HistoryBackButtom,
                 ))
                 .with_children(|parent| {

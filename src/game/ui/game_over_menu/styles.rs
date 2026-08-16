@@ -7,16 +7,19 @@ pub use crate::theme::{
     BUTTON_PRIMARY_PRESSED, SCRIM, SURFACE,
 };
 
-pub const GAME_OVER_MENU_STYLE: Node = Node {
+pub fn game_over_menu_style() -> Node {
+    Node {
     position_type: PositionType::Absolute,
     display: Display::Flex,
     justify_content: JustifyContent::Center,
     align_items: AlignItems::Center,
     size: Size::new(Val::Percent(100.0), Val::Percent(100.0)),
     ..Node::DEFAULT
-};
+}
+}
 
-pub const GAME_OVER_MENU_CONTAINER_STYLE: Node = Node {
+pub fn game_over_menu_container_style() -> Node {
+    Node {
     display: Display::Flex,
     flex_direction: FlexDirection::Column,
     justify_content: JustifyContent::Center,
@@ -33,7 +36,8 @@ pub const GAME_OVER_MENU_CONTAINER_STYLE: Node = Node {
     },
     gap: Size::new(Val::Px(theme::SPACE_SM), Val::Px(theme::SPACE_SM)),
     ..Node::DEFAULT
-};
+}
+}
 
 /// Row holding one stat label and its value, pushed to opposite edges so the
 /// numbers line up in a column the eye can scan.
@@ -62,18 +66,18 @@ pub fn primary_button_style(width: f32) -> Node {
     }
 }
 
-pub fn get_title_text_style(asset_server: &Res<AssetServer>) -> TextStyle {
+pub fn get_title_text_style(asset_server: &Res<AssetServer>) -> theme::TextStyle {
     theme::text_title(asset_server)
 }
 
-pub fn get_resume_text_style(asset_server: &Res<AssetServer>) -> TextStyle {
+pub fn get_resume_text_style(asset_server: &Res<AssetServer>) -> theme::TextStyle {
     theme::text_body(asset_server)
 }
 
-pub fn get_label_text_style(asset_server: &Res<AssetServer>) -> TextStyle {
+pub fn get_label_text_style(asset_server: &Res<AssetServer>) -> theme::TextStyle {
     theme::text_label(asset_server)
 }
 
-pub fn get_button_text_style(asset_server: &Res<AssetServer>) -> TextStyle {
+pub fn get_button_text_style(asset_server: &Res<AssetServer>) -> theme::TextStyle {
     theme::text_button(asset_server)
 }

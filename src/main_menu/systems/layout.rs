@@ -116,19 +116,12 @@ pub fn build_main_menu(
 
     commands
         .spawn((
-            NodeBundle {
-                style: MAIN_MENU_STYLE,
-                background_color: theme::BACKGROUND.into(),
-                ..default()
-            },
+            (main_menu_style(), BackgroundColor(theme::BACKGROUND)),
             MainMenu,
         ))
         .with_children(|parent| {
             parent
-                .spawn(NodeBundle {
-                    style: title_style(height),
-                    ..default()
-                })
+                .spawn(title_style(height))
                 .with_children(|parent| {
                     // "COLOR" plain, "PUZZLE" running through the palette — the
                     // wordmark from the mock-up, built from text sections rather
@@ -242,35 +235,23 @@ fn spawn_card<M: Component>(
 ) {
     parent
         .spawn((
-            ButtonBundle {
-                style: theme::outlined_style(width),
-                background_color: card_border(accent).into(),
-                ..default()
-            },
+            (Button, theme::outlined_style(width), BackgroundColor(card_border(accent))),
             marker,
         ))
         .with_children(|parent| {
             parent
-                .spawn(NodeBundle {
-                    style: mode_card_inner_style(card_height),
-                    background_color: theme::SURFACE.into(),
-                    ..default()
-                })
+                .spawn((
+                    mode_card_inner_style(card_height),
+                    BackgroundColor(theme::SURFACE),
+                ))
                 .with_children(|parent| {
                     // The card's marker. The mock-up puts an icon here; the
                     // display font has no glyph for one and there is no icon
                     // asset, so the color carries the identity on its own.
-                    parent.spawn(NodeBundle {
-                        style: theme::tile_style(chip_size),
-                        background_color: accent.into(),
-                        ..default()
-                    });
+                    parent.spawn((theme::tile_style(chip_size), BackgroundColor(accent)));
 
                     parent
-                        .spawn(NodeBundle {
-                            style: mode_card_text_style(text_width),
-                            ..default()
-                        })
+                        .spawn(mode_card_text_style(text_width))
                         .with_children(|parent| {
                             parent.spawn(theme::wrapped_text(
                                 title,

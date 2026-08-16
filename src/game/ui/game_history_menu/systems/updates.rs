@@ -74,20 +74,12 @@ pub fn spawn_pagination_itens(
 
                 parent
                     .spawn((
-                        ButtonBundle {
-                            style: history_card_style(width),
-                            background_color: BUTTON.into(),
-                            ..default()
-                        },
+                        (Button, history_card_style(width), BackgroundColor(BUTTON)),
                         LevelHistoryOption { index },
                     ))
                     .with_children(|parent| {
                         // The color the round was asking for.
-                        parent.spawn(NodeBundle {
-                            style: theme::tile_style(SWATCH_SIZE),
-                            background_color: level.get_correct_color().into(),
-                            ..default()
-                        });
+                        parent.spawn((theme::tile_style(SWATCH_SIZE), BackgroundColor(level.get_correct_color())));
 
                         parent.spawn(theme::wrapped_text(
                             format!("DESAFIO {}", index + 1),
@@ -135,11 +127,7 @@ fn build_actions(
     // has no slider widget, and a drag target is the wrong shape for a thumb.
     parent
         .spawn((
-            ButtonBundle {
-                style: button_style(width),
-                background_color: BUTTON.into(),
-                ..default()
-            },
+            (Button, button_style(width), BackgroundColor(BUTTON)),
             SoundToggleButton,
         ))
         .with_children(|parent| {
@@ -151,11 +139,7 @@ fn build_actions(
 
     parent
         .spawn((
-            ButtonBundle {
-                style: button_style(width),
-                background_color: theme::BUTTON_PRIMARY.into(),
-                ..default()
-            },
+            (Button, button_style(width), BackgroundColor(theme::BUTTON_PRIMARY)),
             ContinueButton,
         ))
         .with_children(|parent| {
@@ -171,13 +155,13 @@ fn build_actions(
     // could never be recorded.
     parent
         .spawn((
-            ButtonBundle {
-                style: button_style(width),
+            (
+                Button,
+                button_style(width),
                 // The one destructive action on the screen, and the only red
                 // button in the game.
-                background_color: theme::BUTTON_DANGER.into(),
-                ..default()
-            },
+                BackgroundColor(theme::BUTTON_DANGER),
+            ),
             EndRunButton,
         ))
         .with_children(|parent| {
@@ -200,10 +184,7 @@ fn build_pagination_element(
     }
 
     parent
-        .spawn(NodeBundle {
-            style: pagination_container_style(width),
-            ..default()
-        })
+        .spawn(pagination_container_style(width))
         .with_children(|parent| {
             spawn_pagination_button(
                 parent,
@@ -248,11 +229,7 @@ fn spawn_pagination_button(
 ) {
     parent
         .spawn((
-            ButtonBundle {
-                style: BUTTON_PAGINATION_STYLE,
-                background_color: BUTTON.into(),
-                ..default()
-            },
+            (Button, button_pagination_style(), BackgroundColor(BUTTON)),
             PaginationOption { index },
         ))
         .with_children(|parent| {

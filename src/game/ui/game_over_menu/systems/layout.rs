@@ -40,21 +40,16 @@ pub fn build_game_over_menu(
     let text_width = theme::button_text_width(width);
     commands
         .spawn((
-            NodeBundle {
-                style: GAME_OVER_MENU_STYLE,
-                background_color: SCRIM.into(),
-                z_index: ZIndex::Local(2),
-                ..default()
-            },
+            (
+                game_over_menu_style(),
+                BackgroundColor(SCRIM),
+                ZIndex(2),
+            ),
             GameOverMenu,
         ))
         .with_children(|parent| {
             parent
-                .spawn(NodeBundle {
-                    style: GAME_OVER_MENU_CONTAINER_STYLE,
-                    background_color: SURFACE.into(),
-                    ..default()
-                })
+                .spawn((game_over_menu_container_style(), BackgroundColor(SURFACE)))
                 .with_children(|parent| {
                     parent.spawn(theme::wrapped_text(
                         "PONTOS",
@@ -105,10 +100,7 @@ pub fn build_game_over_menu(
 
                     for (index, (label, value)) in rows.into_iter().enumerate() {
                         parent
-                            .spawn(NodeBundle {
-                                style: stat_row_style(width),
-                                ..default()
-                            })
+                            .spawn(stat_row_style(width))
                             .with_children(|parent| {
                                 // Label and value split the row, so neither can
                                 // push the other off the edge.
@@ -174,11 +166,7 @@ fn spawn_button<M: Component>(
 ) {
     parent
         .spawn((
-            ButtonBundle {
-                style,
-                background_color: color.into(),
-                ..default()
-            },
+            (Button, style, BackgroundColor(color)),
             marker,
         ))
         .with_children(|parent| {
@@ -243,20 +231,16 @@ pub fn spawn_resume_screen(
 
     commands
         .spawn((
-            ButtonBundle {
-                style: GAME_OVER_MENU_STYLE,
-                background_color: SCRIM.into(),
-                z_index: ZIndex::Local(2),
-                ..default()
-            },
+            (
+                game_over_menu_style(),
+                BackgroundColor(SCRIM),
+                ZIndex(2),
+            ),
             GameOverMenu,
         ))
         .with_children(|parent| {
             parent
-                .spawn(NodeBundle {
-                    style: GAME_OVER_MENU_CONTAINER_STYLE,
-                    ..default()
-                })
+                .spawn(game_over_menu_container_style())
                 .with_children(|parent| {
                     parent.spawn(theme::wrapped_text(
                         "FIM DE JOGO",

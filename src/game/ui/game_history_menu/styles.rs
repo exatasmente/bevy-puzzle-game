@@ -4,22 +4,25 @@ use crate::theme;
 
 pub use crate::theme::{BUTTON, BUTTON_HOVERED, BUTTON_PRESSED, SCRIM, SURFACE};
 
-pub const HISTORY_MENU_STYLE: Node = Node {
+pub fn history_menu_style() -> Node {
+    Node {
     position_type: PositionType::Absolute,
     display: Display::Flex,
     justify_content: JustifyContent::Center,
     align_items: AlignItems::Center,
     size: Size::new(Val::Percent(100.0), Val::Percent(100.0)),
     ..Node::DEFAULT
-};
+}
+}
 
-pub const HISTORY_MENU_CONTAINER_STYLE: Node = Node {
+pub fn history_menu_container_style() -> Node {
+    Node {
     display: Display::Flex,
     flex_direction: FlexDirection::Column,
     justify_content: JustifyContent::Center,
     align_items: AlignItems::Center,
     size: Size::new(Val::Percent(100.0), Val::Percent(100.0)),
-    // Vertical only — see MAIN_MENU_STYLE.
+    // Vertical only — see main_menu_style().
     padding: UiRect {
         left: Val::Px(0.0),
         right: Val::Px(0.0),
@@ -28,7 +31,8 @@ pub const HISTORY_MENU_CONTAINER_STYLE: Node = Node {
     },
     gap: Size::new(Val::Px(theme::SPACE_XS), Val::Px(theme::SPACE_XS)),
     ..Node::DEFAULT
-};
+}
+}
 
 /// One past round: swatch, label, outcome.
 pub fn history_card_style(width: f32) -> Node {
@@ -70,25 +74,27 @@ pub fn pagination_container_style(width: f32) -> Node {
     }
 }
 
-pub const BUTTON_PAGINATION_STYLE: Node = Node {
+pub fn button_pagination_style() -> Node {
+    Node {
     size: Size::new(Val::Px(theme::TOUCH_TARGET), Val::Px(theme::TOUCH_TARGET)),
     justify_content: JustifyContent::Center,
     align_items: AlignItems::Center,
     ..Node::DEFAULT
-};
+}
+}
 
-pub fn get_title_text_style(asset_server: &Res<AssetServer>) -> TextStyle {
+pub fn get_title_text_style(asset_server: &Res<AssetServer>) -> theme::TextStyle {
     theme::text_title(asset_server)
 }
 
-pub fn get_button_text_style(asset_server: &Res<AssetServer>) -> TextStyle {
+pub fn get_button_text_style(asset_server: &Res<AssetServer>) -> theme::TextStyle {
     theme::text_button(asset_server)
 }
 
-pub fn get_label_text_style(asset_server: &Res<AssetServer>) -> TextStyle {
+pub fn get_label_text_style(asset_server: &Res<AssetServer>) -> theme::TextStyle {
     theme::text_label(asset_server)
 }
 
-pub fn get_pagination_button_text_style(asset_server: &Res<AssetServer>) -> TextStyle {
+pub fn get_pagination_button_text_style(asset_server: &Res<AssetServer>) -> theme::TextStyle {
     theme::text(asset_server, theme::TEXT_MD, theme::ON_SURFACE)
 }

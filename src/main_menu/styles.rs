@@ -5,7 +5,8 @@ use crate::theme;
 /// Side of the colored chip that identifies a mode.
 pub const MODE_CHIP_SIZE: f32 = 44.0;
 
-pub const MAIN_MENU_STYLE: Node = Node {
+pub fn main_menu_style() -> Node {
+    Node {
     flex_direction: FlexDirection::Column,
     justify_content: JustifyContent::Center,
     align_items: AlignItems::Center,
@@ -14,7 +15,8 @@ pub const MAIN_MENU_STYLE: Node = Node {
     // plus padding is wider than its parent and everything inside it slides
     // off the screen edge. The children carry their own width instead.
     ..Node::DEFAULT
-};
+}
+}
 
 /// The wordmark block.
 ///
@@ -96,14 +98,14 @@ pub fn card_border_pressed(accent: Color) -> Color {
     accent
 }
 
-pub fn get_mode_name_text_style(asset_server: &Res<AssetServer>) -> TextStyle {
+pub fn get_mode_name_text_style(asset_server: &Res<AssetServer>) -> theme::TextStyle {
     theme::text(asset_server, theme::TEXT_MD, theme::ON_SURFACE)
 }
 
-pub fn get_mode_description_text_style(asset_server: &Res<AssetServer>) -> TextStyle {
+pub fn get_mode_description_text_style(asset_server: &Res<AssetServer>) -> theme::TextStyle {
     theme::text(asset_server, theme::TEXT_XS, theme::MUTED)
 }
 
-pub fn get_best_score_text_style(asset_server: &Res<AssetServer>) -> TextStyle {
+pub fn get_best_score_text_style(asset_server: &Res<AssetServer>) -> theme::TextStyle {
     theme::text(asset_server, theme::TEXT_XS, theme::ACCENT)
 }

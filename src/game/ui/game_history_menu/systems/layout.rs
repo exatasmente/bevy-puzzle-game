@@ -12,22 +12,17 @@ pub fn spawn_game_history_menu(
 ) {
     commands
         .spawn((
-            NodeBundle {
-                style: HISTORY_MENU_STYLE,
-                background_color: SCRIM.into(),
-                z_index: ZIndex::Local(2),
-                ..default()
-            },
+            (
+                history_menu_style(),
+                BackgroundColor(SCRIM),
+                ZIndex(2),
+            ),
             GameHistoryMenu,
         ))
         .with_children(|parent| {
             let pagination_container = parent
                 .spawn((
-                    NodeBundle {
-                        style: HISTORY_MENU_CONTAINER_STYLE,
-                        background_color: SURFACE.into(),
-                        ..default()
-                    },
+                    (history_menu_container_style(), BackgroundColor(SURFACE)),
                     PaginationContainer,
                 ))
                 .id();
