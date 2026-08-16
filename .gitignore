@@ -12,3 +12,7 @@
 
 /.metals/
 /.vscode/
+
+# Local wasm bundle built for browser testing (the deploy workflow builds its
+# own; nothing here is served).
+dist/
