@@ -4,3 +4,16 @@
 # server.
 [target.wasm32-unknown-unknown]
 runner = "wasm-server-runner"
+
+# getrandom 0.3 refuses to build for wasm32-unknown-unknown unless it is told
+# which backend to use, and it will not take the answer from a Cargo feature
+# alone — the feature enables the module, this cfg selects it. Both are needed;
+# either one on its own is a compile_error. (0.4 dropped the cfg and takes the
+# feature alone, and 0.2 wants `js` instead. All three versions are in the tree,
+# pulled in by different dependencies, so all three spellings are in use — see
+# the comment in Cargo.toml.)
+#
+# This lives here rather than in CI because the deploy workflow runs a plain
+# `cargo build --target wasm32-unknown-unknown` and sets no RUSTFLAGS; config
+# rustflags would be *overridden* by a RUSTFLAGS env var, so do not add one.
+rustflags = ['--cfg', 'getrandom_backend="wasm_js"']

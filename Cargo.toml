@@ -23,12 +23,24 @@ bevy_prototype_lyon = "0.17"
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 web-sys = { version = "0.3", features = ["Window", "Storage"] }
 
-# Never named in `src/`, and not removable for that reason: both exist only to
-# turn on a feature a transitive dependency needs to build for the browser at
-# all. Dropping them fails the wasm build with "specify a source of randomness"
-# — measured, not assumed.
+# Never named in `src/`, and not removable for that reason: these exist only to
+# turn on features a transitive dependency needs to build for the browser at
+# all. Dropping them fails the wasm build — measured, not assumed.
+#
+# There are three getrandom majors in the tree, reached by different
+# dependencies, and each wants its browser backend asked for differently. All
+# three have to be answered or the build stops at whichever one it reaches
+# first, so they are all declared here under renamed keys:
+#
+#   0.2 — feature `js`
+#   0.3 — feature `wasm_js` AND `--cfg getrandom_backend="wasm_js"`, which is
+#         in `.cargo/config.toml`; the feature alone is explicitly not enough
+#         and says so in a compile_error
+#   0.4 — feature `wasm_js` alone; the cfg was dropped again
 uuid = { version = "1", features = ["js"] }
 getrandom = { version = "0.2", features = ["js"] }
+getrandom_03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
+getrandom_04 = { package = "getrandom", version = "0.4", features = ["wasm_js"] }
 # Enable only a small amount of optimization in debug mode
 [profile.dev]
 opt-level = 1
