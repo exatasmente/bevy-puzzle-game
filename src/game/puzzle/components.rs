@@ -249,10 +249,15 @@ impl PowerUp {
     }
 
     /// The HUD button's face. ASCII only — the display font has no accents.
+    ///
+    /// `CORTAR` rather than the `-META` this started as: that was short for
+    /// "metade", but the main menu now has a `METAS` button for the goals
+    /// screen, and the two sat one tap apart reading as the same word. A verb
+    /// also says what the button does, which an abbreviation did not.
     pub fn label(&self) -> &'static str {
         match self {
             PowerUp::ExtraLife => "+VIDA",
-            PowerUp::EliminateWrong => "-META",
+            PowerUp::EliminateWrong => "CORTAR",
         }
     }
 
