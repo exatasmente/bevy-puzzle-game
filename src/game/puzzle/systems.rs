@@ -83,18 +83,18 @@ pub fn player_interaction(
     // player who spots the answer melt away should be able to say so at once
     // rather than wait it out.
     if event_click.just_released(MouseButton::Left) || touches.any_just_pressed() {
-        // Bevy 0.10's `viewport_to_world_2d` maps its argument straight to NDC
-        // without flipping y, so it wants a position whose origin is the
-        // *bottom* left — which is what `cursor_position` returns. Touches are
-        // the odd one out: `bevy_winit` passes them through in winit's
-        // top-left convention, so they need converting first.
+        // Everything here is top-left, and nothing is flipped.
+        // `viewport_to_ndc` flips y itself before handing the point to the
+        // projection, so `viewport_to_world_2d` wants an origin at the *top*
+        // left — and both `cursor_position` and `Touches` report winit's
+        // top-left positions straight through. So both go in unchanged.
         //
-        // The touch branch used to convert after the fact instead, by negating
-        // the resulting world y. That happens to agree with this only while the
-        // camera sits exactly at the origin; converting the input is what
-        // actually means "the point the finger is on".
+        // This is the opposite of what it was under 0.10, where the cursor
+        // arrived bottom-left and only the touch branch had to be converted.
+        // Leaving either flip in place mirrors every pick vertically, and
+        // compiles without complaint — which is why this is its own commit.
         let screen_position = if let Some(touch) = touches.first_pressed_position() {
-            Vec2::new(touch.x, window.height() - touch.y)
+            touch
         } else if let Some(cursor) = window.cursor_position() {
             cursor
         } else {
