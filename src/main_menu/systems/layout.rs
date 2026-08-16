@@ -110,7 +110,10 @@ pub fn build_main_menu(
     // One card per mode, always: a mode with a stored run resumes it from its
     // own card rather than from a separate one at the top, so the list has a
     // fixed length and the card the player reaches for does not move.
-    let cards = GameMode::iter().count();
+    // The goals button is a row like the others as far as the fit is
+    // concerned, so it is counted here — otherwise the five cards claim the
+    // whole height and it lands off the bottom of a short screen.
+    let cards = GameMode::iter().count() + 1;
     let card_height = mode_card_height(height, cards);
     let chip_size = mode_chip_size(card_height);
 
@@ -194,6 +197,25 @@ pub fn build_main_menu(
                     ),
                 }
             }
+
+            // Below the modes, not above: the list is what the player came for,
+            // and the goals are read between runs rather than instead of one.
+            parent
+                .spawn((
+                    (
+                        Button,
+                        theme::button_style(width),
+                        BackgroundColor(theme::SURFACE_RAISED),
+                    ),
+                    AchievementsButton,
+                ))
+                .with_children(|parent| {
+                    parent.spawn(theme::wrapped_text(
+                        "METAS",
+                        theme::text_button(asset_server),
+                        width,
+                    ));
+                });
         })
         .id()
 }

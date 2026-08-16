@@ -22,7 +22,11 @@ impl Plugin for MainMenuPlugin {
             // Systems
             .add_systems(
                 Update,
-                (interact_with_play_button, interact_with_continue_run_button)
+                (
+                    interact_with_play_button,
+                    interact_with_continue_run_button,
+                    interact_with_achievements_button,
+                )
                     .run_if(in_state(AppState::MainMenu)),
             )
             // Rebuilding tears down live `Button` entities, so it runs after

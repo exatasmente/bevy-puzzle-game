@@ -105,3 +105,27 @@ pub fn interact_with_continue_run_button(
         }
     }
 }
+
+/// Opens the goals screen.
+pub fn interact_with_achievements_button(
+    mut button_query: Query<
+        (&Interaction, &mut BackgroundColor),
+        (Changed<Interaction>, With<AchievementsButton>),
+    >,
+    mut transition_to_state_event_writer: MessageWriter<TransitionToStateEvent>,
+) {
+    for (interaction, mut background_color) in button_query.iter_mut() {
+        match *interaction {
+            Interaction::Pressed => {
+                *background_color = crate::theme::SURFACE.into();
+                transition_to_state_event_writer.write(TransitionToStateEvent {
+                    state: AppState::Achievements,
+                });
+            }
+            Interaction::Hovered => {
+                *background_color = crate::theme::BUTTON_HOVERED.into()
+            }
+            Interaction::None => *background_color = crate::theme::SURFACE_RAISED.into(),
+        }
+    }
+}

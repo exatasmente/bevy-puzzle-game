@@ -22,3 +22,7 @@ pub struct ContinueRunButton {
     /// Power-ups the stored run had in hand.
     pub power_ups: PowerUps,
 }
+
+/// Opens the goals screen.
+#[derive(Component)]
+pub struct AchievementsButton;
