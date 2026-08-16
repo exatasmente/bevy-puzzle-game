@@ -58,6 +58,16 @@ pub struct NewGameEvent {
 #[derive(Message)]
 pub struct StartLevelEvent;
 
+/// Asks the puzzle systems to spend a power-up.
+///
+/// An event rather than a direct call so the HUD never touches the board: the
+/// button knows what was pressed, and the module that owns the pieces decides
+/// what that means.
+#[derive(Message)]
+pub struct UsePowerUpEvent {
+    pub kind: PowerUp,
+}
+
 #[derive(Debug, Reflect, PartialEq, Eq, Clone, Copy)]
 pub enum GameMode {
     Infinite,
@@ -204,6 +214,110 @@ impl GameMode {
 /// never above the mode's maximum — so a careful player can hold three
 /// indefinitely and a reckless one still bleeds out.
 pub const LEVELS_PER_EXTRA_LIFE: usize = 5;
+
+/// Correct picks in a row that earn one power-up.
+///
+/// Tied to the streak rather than to the level because the streak is the one
+/// number a miss resets: a power-up you are three picks away from losing is
+/// worth playing carefully for, while one that arrives on a timetable rewards
+/// nothing. The HUD already shows "SEQ", so the progress is on screen without
+/// a second counter.
+pub const PICKS_PER_POWER_UP: usize = 5;
+
+/// The two things a run can spend.
+///
+/// Both are deliberately outside the board: neither draws on top of the
+/// pieces, because an outline over a cell is exactly what the board must never
+/// have — see the note on the pieces being flat.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PowerUp {
+    /// Hands a life back, capped at the mode's maximum.
+    ExtraLife,
+    /// Dims half of the groups that do not hold the answer.
+    ///
+    /// **Dims, rather than removes.** In the colour modes the ground *is* the
+    /// answer's colour, so clearing a group to the background would turn it
+    /// into holes indistinguishable from the answer's own cell — the round
+    /// would get harder, not easier, and the fairness the generator works for
+    /// would be gone. A dimmed cell reads as "ruled out" and stays visible.
+    EliminateWrong,
+}
+
+impl PowerUp {
+    pub fn iter() -> impl Iterator<Item = PowerUp> {
+        [PowerUp::ExtraLife, PowerUp::EliminateWrong].into_iter()
+    }
+
+    /// The HUD button's face. ASCII only — the display font has no accents.
+    pub fn label(&self) -> &'static str {
+        match self {
+            PowerUp::ExtraLife => "+VIDA",
+            PowerUp::EliminateWrong => "-META",
+        }
+    }
+
+    /// The key it is stored under, stable across builds.
+    pub fn storage_key(&self) -> &'static str {
+        match self {
+            PowerUp::ExtraLife => "life",
+            PowerUp::EliminateWrong => "cut",
+        }
+    }
+}
+
+/// What the run is carrying, as counts.
+///
+/// Part of the run's state rather than a profile-wide wallet: power-ups are
+/// earned by a streak inside one run, and carrying them between runs would let
+/// a player farm an easy mode and spend the winnings in a hard one.
+#[derive(Resource, Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct PowerUps {
+    extra_life: usize,
+    eliminate_wrong: usize,
+}
+
+impl PowerUps {
+    pub fn new(extra_life: usize, eliminate_wrong: usize) -> Self {
+        Self {
+            extra_life,
+            eliminate_wrong,
+        }
+    }
+
+    pub fn count(&self, power_up: PowerUp) -> usize {
+        match power_up {
+            PowerUp::ExtraLife => self.extra_life,
+            PowerUp::EliminateWrong => self.eliminate_wrong,
+        }
+    }
+
+    pub fn grant(&mut self, power_up: PowerUp) {
+        match power_up {
+            PowerUp::ExtraLife => self.extra_life += 1,
+            PowerUp::EliminateWrong => self.eliminate_wrong += 1,
+        }
+    }
+
+    /// Spends one. False when there was none to spend, so the caller can leave
+    /// the board alone rather than play an effect for nothing.
+    pub fn spend(&mut self, power_up: PowerUp) -> bool {
+        match power_up {
+            PowerUp::ExtraLife if self.extra_life > 0 => {
+                self.extra_life -= 1;
+                true
+            }
+            PowerUp::EliminateWrong if self.eliminate_wrong > 0 => {
+                self.eliminate_wrong -= 1;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    pub fn clear(&mut self) {
+        *self = Self::default();
+    }
+}
 
 
 #[derive(Resource, Debug, Reflect)]
@@ -1018,6 +1132,17 @@ impl ColorPuzzle {
     pub fn restore_lives(&mut self, lives: usize) {
         let max = self.max_lives();
         self.lives = lives.clamp(usize::from(max > 0), max);
+    }
+
+    /// Whether a power-up is worth handing to a run in this mode.
+    ///
+    /// A life the mode does not have is not a reward, it is a dead button, so
+    /// the timed modes only ever earn the other one.
+    pub fn can_hold(&self, power_up: PowerUp) -> bool {
+        match power_up {
+            PowerUp::ExtraLife => self.uses_lives(),
+            PowerUp::EliminateWrong => true,
+        }
     }
 
     /// Whether the square at `index` is the odd one out.

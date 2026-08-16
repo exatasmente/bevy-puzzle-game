@@ -8,7 +8,7 @@ use crate::events::InteractionAnimationEvent;
 use crate::feedback::BannerEvent;
 use crate::theme;
 use super::components::*;
-use crate::systems::BackgroundTranstion;
+use crate::systems::{lerp_color, BackgroundTranstion};
 use crate::wfc::Tile;
 
 #[derive(Component)]
@@ -789,4 +789,140 @@ pub fn despaw_objects(
     }
 
     puzzle.generate_colors();
+}
+
+/// Hands out a power-up every `PICKS_PER_POWER_UP` correct picks in a row.
+///
+/// Watches the streak rather than hooking the pick, so it stays out of
+/// `player_interaction` — which is already the widest system here and the one
+/// most easily broken by another branch. A `Local` remembers the streak this
+/// last fired on, because the streak sits at the same value for the whole of
+/// the round it was reached in.
+///
+/// Which power-up is granted alternates, skipping any the mode cannot use: a
+/// timed mode has no lives, so a life there would be a button that does
+/// nothing, and the player would learn to ignore both.
+pub fn award_power_ups(
+    puzzle: Res<ColorPuzzle>,
+    game_history: Res<GameHistory>,
+    mut power_ups: ResMut<PowerUps>,
+    mut banner: MessageWriter<BannerEvent>,
+    mut last_award: Local<usize>,
+) {
+    let streak = game_history.current_streak();
+
+    // A miss resets the streak, and with it the progress toward the next one.
+    if streak < *last_award {
+        *last_award = 0;
+    }
+
+    if streak == 0 || streak % PICKS_PER_POWER_UP != 0 || streak == *last_award {
+        return;
+    }
+
+    *last_award = streak;
+
+    let usable: Vec<PowerUp> = PowerUp::iter()
+        .filter(|kind| puzzle.can_hold(*kind))
+        .collect();
+
+    let Some(kind) = usable
+        .get((streak / PICKS_PER_POWER_UP - 1) % usable.len().max(1))
+        .copied()
+    else {
+        return;
+    };
+
+    power_ups.grant(kind);
+    banner.write(BannerEvent::power_up(kind.label()));
+}
+
+/// How far a ruled-out group is pushed toward the ground.
+///
+/// Not all the way: a cell taken to the background colour would become a hole,
+/// and in the colour modes the ground *is* the answer's colour — the board
+/// would grow a crop of cells indistinguishable from the one being looked for.
+/// Ruled out has to stay visible to mean anything.
+const ELIMINATED_MIX: f32 = 0.82;
+
+/// Spends a power-up on the board.
+///
+/// Lives in the puzzle module rather than in the HUD because it is the pieces
+/// that get touched, and `Shape::fill` is how a piece is repainted — the same
+/// path `hide_memory_board` uses.
+pub fn apply_power_up(
+    mut events: MessageReader<UsePowerUpEvent>,
+    mut power_ups: ResMut<PowerUps>,
+    mut puzzle: ResMut<ColorPuzzle>,
+    mut board: Query<(&PuzzleColor, &mut Shape)>,
+    mut banner: MessageWriter<BannerEvent>,
+) {
+    let Some(event) = events.read().next() else {
+        return;
+    };
+
+    match event.kind {
+        PowerUp::ExtraLife => {
+            // Checked before spending: `gain_life` refuses at full lives, and
+            // charging for a refusal would be taking the power-up for nothing.
+            if puzzle.lives() >= puzzle.max_lives() || !power_ups.spend(PowerUp::ExtraLife) {
+                return;
+            }
+            puzzle.gain_life();
+            banner.write(BannerEvent::power_up("+1 VIDA"));
+        }
+        PowerUp::EliminateWrong => {
+            if !power_ups.spend(PowerUp::EliminateWrong) {
+                return;
+            }
+
+            let ground = puzzle.background_color();
+
+            // Every colour on the board except the answer's own. Grouped by
+            // colour rather than by cell, because ruling out half the *cells*
+            // would leave groups half-dimmed and say nothing.
+            let mut groups: Vec<Color> = Vec::new();
+            for (piece, _) in board.iter() {
+                if piece.is_correct_color {
+                    continue;
+                }
+                if !groups.iter().any(|c| colors_match(*c, piece.color)) {
+                    groups.push(piece.color);
+                }
+            }
+
+            // Half of them, rounded up, so a board with two wrong groups still
+            // loses one and the power-up always does something visible.
+            let cut = groups.len().div_ceil(2);
+            let doomed: Vec<Color> = groups.into_iter().take(cut).collect();
+
+            for (piece, mut shape) in board.iter_mut() {
+                if piece.is_correct_color {
+                    continue;
+                }
+                if doomed.iter().any(|c| colors_match(*c, piece.color)) {
+                    shape.fill = Some(Fill::color(lerp_color(
+                        piece.color,
+                        ground,
+                        ELIMINATED_MIX,
+                    )));
+                }
+            }
+
+            banner.write(BannerEvent::power_up("DESCARTADOS"));
+        }
+    }
+}
+
+/// Whether two colours are the same group.
+///
+/// Compared channel-wise with a tolerance rather than by `==`: the generator
+/// hands every cell in a group the identical value, but the colours have been
+/// through Oklab and back, and an exact float comparison is a fragile thing to
+/// hang a power-up on.
+fn colors_match(a: Color, b: Color) -> bool {
+    let (a, b) = (a.to_srgba(), b.to_srgba());
+    (a.red - b.red).abs() < 0.001
+        && (a.green - b.green).abs() < 0.001
+        && (a.blue - b.blue).abs() < 0.001
 }

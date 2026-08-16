@@ -196,3 +196,36 @@ pub const BACK_BUTTON_WIDTH: f32 = 200.0;
 
 /// Track color for the progress bar: visible, but clearly the empty part.
 pub const PROGRESS_TRACK_COLOR: Color = Color::srgba(1.0, 1.0, 1.0, 0.14);
+
+/// The row of power-up buttons, sitting under the level bar.
+pub fn power_up_row_style() -> Node {
+    Node {
+        width: Val::Percent(HUD_ROW_WIDTH),
+        flex_direction: FlexDirection::Row,
+        justify_content: JustifyContent::Center,
+        align_items: AlignItems::Center,
+        column_gap: Val::Px(theme::SPACE_XS),
+        margin: UiRect::top(Val::Px(theme::SPACE_XS)),
+        ..Node::DEFAULT
+    }
+}
+
+/// One power-up button. Full `TOUCH_TARGET` height, because it is pressed
+/// mid-round with a thumb that is otherwise busy reading the board.
+pub fn power_up_button_style() -> Node {
+    Node {
+        height: Val::Px(theme::TOUCH_TARGET),
+        min_height: Val::Px(theme::TOUCH_TARGET),
+        min_width: Val::Px(POWER_UP_BUTTON_WIDTH),
+        flex_grow: 1.0,
+        justify_content: JustifyContent::Center,
+        align_items: AlignItems::Center,
+        ..Node::DEFAULT
+    }
+}
+
+pub const POWER_UP_BUTTON_WIDTH: f32 = 84.0;
+
+/// A power-up with none left. Still on screen and still the same size — it is
+/// the count that changed, not the layout.
+pub const POWER_UP_EMPTY_COLOR: Color = Color::srgba(1.0, 1.0, 1.0, 0.06);

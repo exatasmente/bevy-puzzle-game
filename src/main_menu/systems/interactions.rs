@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 
 use crate::events::TransitionToStateEvent;
-use crate::game::puzzle::components::ColorPuzzle;
+use crate::game::puzzle::components::{ColorPuzzle, PowerUps};
 use crate::game::puzzle::components::GameHistory;
 use crate::main_menu::components::*;
 use crate::main_menu::styles::{card_border, card_border_hovered, card_border_pressed};
@@ -21,6 +21,7 @@ pub fn interact_with_play_button(
     mut puzzle: ResMut<ColorPuzzle>,
     mut game_history: ResMut<GameHistory>,
     mut pagination: ResMut<Pagination>,
+    mut power_ups: ResMut<PowerUps>,
 ) {
     for (interaction, mut background_color, play_button) in button_query.iter_mut() {
         // The card's border carries the mode's own color, so the feedback for
@@ -32,6 +33,9 @@ pub fn interact_with_play_button(
             Interaction::Pressed => {
                 *background_color = card_border_pressed(accent).into();
                 puzzle.setup(&play_button.game_mode);
+                // A fresh run starts empty-handed: power-ups are earned inside
+                // one run and do not carry between them.
+                power_ups.clear();
                 game_history.reset();
                 game_history.set_game_mode(play_button.game_mode);
                 pagination.reset();
@@ -61,6 +65,7 @@ pub fn interact_with_continue_run_button(
     mut game_history: ResMut<GameHistory>,
     mut pagination: ResMut<Pagination>,
     mut saved_run: ResMut<SavedRun>,
+    mut power_ups: ResMut<PowerUps>,
 ) {
     for (interaction, mut background_color, button) in button_query.iter_mut() {
         let accent = button.game_mode.accent();
@@ -74,6 +79,7 @@ pub fn interact_with_continue_run_button(
                 // After `setup`, which seeds a full complement: the run is
                 // picked up where it was left, lives included.
                 puzzle.restore_lives(button.lives);
+                *power_ups = button.power_ups;
 
                 game_history.reset();
                 game_history.set_game_mode(button.game_mode);
@@ -83,7 +89,12 @@ pub fn interact_with_continue_run_button(
                 // Keep the stored run pointing at the same place until the
                 // resumed run moves it. Dropping it here would lose the run if
                 // the player bounced straight back to the menu.
-                saved_run.store(button.game_mode, button.score, button.lives);
+                saved_run.store(
+                    button.game_mode,
+                    button.score,
+                    button.lives,
+                    button.power_ups,
+                );
 
                 transition_to_state_event_writer.write(TransitionToStateEvent {
                     state: AppState::Game,

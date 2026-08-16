@@ -1,7 +1,9 @@
 use bevy::prelude::*;
 
 use crate::events::TransitionToStateEvent;
-use crate::game::ui::hud::components::{HistoryBackButtom, HistoryButtom};
+use crate::game::puzzle::components::{ColorPuzzle, PowerUps, UsePowerUpEvent};
+use crate::game::ui::hud::components::{HistoryBackButtom, HistoryButtom, PowerUpButton};
+use crate::game::ui::hud::systems::updates::usable;
 use crate::game::ui::hud::styles::{BUTTON, BUTTON_HOVERED, BUTTON_PRESSED};
 use crate::AppState;
 
@@ -46,6 +48,38 @@ pub fn interact_with_history_back_button(
             }
             Interaction::Hovered => *background_color = BUTTON_HOVERED.into(),
             Interaction::None => *background_color = BUTTON.into(),
+        }
+    }
+}
+
+/// Spends a power-up.
+///
+/// The effect itself is not applied here: this sends `UsePowerUpEvent` and the
+/// puzzle systems act on it, which keeps the board-touching code in the module
+/// that owns the board. A press on a button with nothing to spend is ignored
+/// rather than played as a failed action — the button is already dimmed, and a
+/// buzz for touching a disabled control teaches nothing.
+pub fn interact_with_power_up_buttons(
+    mut button_query: Query<
+        (&Interaction, &mut BackgroundColor, &PowerUpButton),
+        (Changed<Interaction>, With<PowerUpButton>),
+    >,
+    power_ups: Res<PowerUps>,
+    puzzle: Res<ColorPuzzle>,
+    mut use_power_up: MessageWriter<UsePowerUpEvent>,
+) {
+    for (interaction, mut background_color, button) in button_query.iter_mut() {
+        let live = usable(&power_ups, &puzzle, button.kind);
+
+        match *interaction {
+            Interaction::Pressed => {
+                if live {
+                    use_power_up.write(UsePowerUpEvent { kind: button.kind });
+                    *background_color = BUTTON_PRESSED.into();
+                }
+            }
+            Interaction::Hovered if live => *background_color = BUTTON_HOVERED.into(),
+            _ => {}
         }
     }
 }

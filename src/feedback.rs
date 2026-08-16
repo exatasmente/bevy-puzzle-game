@@ -244,23 +244,59 @@ pub fn animate_screen_shake(
 
 // --- Banner ----------------------------------------------------------------
 
-/// A short, loud, centered announcement: "NIVEL 3", "EM CHAMAS!".
+/// What a banner is announcing.
+///
+/// Carried on the event rather than inferred downstream: `audio.rs` plays the
+/// level sound off banners, and when the level-up was the only kind it could do
+/// that without looking. It is not the only kind any more, and a power-up
+/// announcing itself with the level fanfare would spend the loudest sound in
+/// the game on the smaller event.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum BannerKind {
+    LevelUp,
+    PowerUp,
+    Achievement,
+}
+
+/// A short, loud, centered announcement: "NIVEL 3", "+VIDA".
 #[derive(Message)]
 pub struct BannerEvent {
     pub text: String,
     pub color: Color,
     pub size: f32,
+    pub kind: BannerKind,
 }
 
 impl BannerEvent {
-    /// The only banner left is the level-up. The streak milestones used to send
-    /// a smaller one, and they interrupted the board-reading they were meant to
-    /// celebrate.
+    /// A level up. The streak milestones used to send a smaller one, and they
+    /// interrupted the board-reading they were meant to celebrate.
     pub fn large(text: impl Into<String>, color: Color) -> Self {
         Self {
             text: text.into(),
             color,
             size: theme::TEXT_XL,
+            kind: BannerKind::LevelUp,
+        }
+    }
+
+    /// A power-up earned. Smaller type than a level up, because it arrives more
+    /// often and must not cover more of the board than it has to.
+    pub fn power_up(text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            color: theme::LIME,
+            size: theme::TEXT_LG,
+            kind: BannerKind::PowerUp,
+        }
+    }
+
+    /// A goal reached.
+    pub fn achievement(text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            color: theme::ACCENT,
+            size: theme::TEXT_LG,
+            kind: BannerKind::Achievement,
         }
     }
 }
