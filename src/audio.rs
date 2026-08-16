@@ -30,7 +30,7 @@ use bevy::audio::{AudioSinkPlayback, PlaybackMode};
 use bevy::prelude::*;
 
 use crate::events::InteractionAnimationEvent;
-use crate::feedback::BannerEvent;
+use crate::feedback::{BannerEvent, BannerKind};
 use crate::storage;
 use crate::AppState;
 
@@ -313,12 +313,19 @@ fn play_level_sound(
         return;
     };
 
-    for _ in events.read() {
+    for event in events.read() {
         if volume.is_silent() {
             continue;
         }
 
-        // The banner is only ever a level up now, so it needs no filtering.
+        // Only the level up gets this sound. Banners now also announce
+        // power-ups and goals, and giving those the level fanfare would spend
+        // the loudest cue in the game on the smaller events until it stopped
+        // meaning anything.
+        if event.kind != BannerKind::LevelUp {
+            continue;
+        }
+
         commands.spawn((
             AudioPlayer::new(sounds.level.clone()),
             PlaybackSettings {

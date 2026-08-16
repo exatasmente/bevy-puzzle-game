@@ -4,13 +4,14 @@ mod systems;
 
 use crate::game::ui::hud::systems::interactions::{
     interact_with_history_back_button, interact_with_pause_button,
+    interact_with_power_up_buttons,
 };
 use crate::game::ui::hud::systems::layout::{
     despawn_back_button, despawn_hud, spawn_back_button, spawn_hud,
 };
 use crate::game::ui::hud::systems::updates::{
-    update_level_progress, update_lives_pips, update_score_text, update_streak_text,
-    update_timer_text,
+    update_level_progress, update_lives_pips, update_power_up_buttons, update_score_text,
+    update_streak_text, update_timer_text,
 };
 use crate::AppState;
 use bevy::prelude::*;
@@ -37,6 +38,8 @@ impl Plugin for HudPlugin {
                     update_timer_text,
                     update_lives_pips,
                     update_level_progress,
+                    update_power_up_buttons,
+                    interact_with_power_up_buttons,
                 )
                     .run_if(in_state(AppState::Game)),
             )

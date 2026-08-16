@@ -7,7 +7,7 @@
 
 use bevy::prelude::*;
 
-use crate::game::puzzle::components::ColorPuzzle;
+use crate::game::puzzle::components::{ColorPuzzle, PowerUp};
 use crate::game::ui::hud::components::*;
 use crate::game::ui::hud::styles::*;
 use crate::theme;
@@ -107,6 +107,12 @@ pub fn build_hud(
                                 spawn_lives_row(parent, lives);
                             }
                         });
+
+                    // What the run is carrying. Built for every mode, because
+                    // `EliminateWrong` is earned in all of them; the life
+                    // button is left out where the mode has no lives to give,
+                    // rather than sitting there doing nothing.
+                    spawn_power_up_row(parent, asset_server, lives > 0);
 
                     // Goal gradient made visible: a bar that is visibly close to
                     // full pulls harder than an unmarked distance.
@@ -210,4 +216,45 @@ pub fn despawn_back_button(mut commands: Commands, query: Query<Entity, With<Bac
     for entity in query.iter() {
         commands.entity(entity).despawn();
     }
+}
+
+/// The row of power-up buttons.
+///
+/// `has_lives` decides whether the life button is built at all: a timed mode
+/// never earns one, so showing it would be a permanent zero the player learns
+/// to ignore — and ignoring one button is a short step from ignoring both.
+fn spawn_power_up_row(
+    parent: &mut ChildSpawnerCommands,
+    asset_server: &Res<AssetServer>,
+    has_lives: bool,
+) {
+    parent
+        .spawn((power_up_row_style(), PowerUpRow))
+        .with_children(|parent| {
+            for kind in PowerUp::iter() {
+                if matches!(kind, PowerUp::ExtraLife) && !has_lives {
+                    continue;
+                }
+
+                parent
+                    .spawn((
+                        (
+                            Button,
+                            power_up_button_style(),
+                            BackgroundColor(POWER_UP_EMPTY_COLOR),
+                        ),
+                        PowerUpButton { kind },
+                    ))
+                    .with_children(|parent| {
+                        parent.spawn((
+                            theme::wrapped_text(
+                                format!("{} 0", kind.label()),
+                                theme::text(asset_server, theme::TEXT_SM, theme::MUTED),
+                                POWER_UP_BUTTON_WIDTH,
+                            ),
+                            PowerUpButtonLabel { kind },
+                        ));
+                    });
+            }
+        });
 }

@@ -7,9 +7,9 @@
 use bevy::prelude::*;
 
 use crate::feedback::PopAnim;
-use crate::game::puzzle::components::{ColorPuzzle, GameHistory, GameTimer};
+use crate::game::puzzle::components::{ColorPuzzle, GameHistory, GameTimer, PowerUp, PowerUps};
 use crate::game::ui::hud::components::*;
-use crate::game::ui::hud::styles::LIVES_PIP_SPENT_COLOR;
+use crate::game::ui::hud::styles::{BUTTON, LIVES_PIP_SPENT_COLOR, POWER_UP_EMPTY_COLOR};
 use crate::theme;
 
 /// Seconds left at which the timer starts warning.
@@ -206,5 +206,56 @@ pub fn update_level_progress(
             puzzle.level(),
             puzzle.points_to_next_level()
         );
+    }
+}
+
+/// Keeps each power-up button showing what is left, and dims the ones that are
+/// out.
+///
+/// Compares the string rather than gating on `PowerUps::is_changed()`, for the
+/// same reason `update_sound_label` does: the writer is a sibling in the same
+/// tuple, so the reader can run first in the very frame the value changes, and
+/// the flag is only set for that frame.
+pub fn update_power_up_buttons(
+    power_ups: Res<PowerUps>,
+    puzzle: Res<ColorPuzzle>,
+    mut label_query: Query<(&mut Text, &mut TextColor, &PowerUpButtonLabel)>,
+    mut button_query: Query<(&mut BackgroundColor, &PowerUpButton), Without<Interaction>>,
+) {
+    for (mut text, mut color, label) in label_query.iter_mut() {
+        let count = power_ups.count(label.kind);
+        let wanted = format!("{} {}", label.kind.label(), count);
+
+        if text.0 != wanted {
+            text.0 = wanted;
+        }
+
+        // A life button is also dead when the run is already at full lives —
+        // spending one there would consume the power-up and give nothing back.
+        color.0 = if usable(&power_ups, &puzzle, label.kind) {
+            theme::LIME
+        } else {
+            theme::MUTED
+        };
+    }
+
+    for (mut background, button) in button_query.iter_mut() {
+        *background = if usable(&power_ups, &puzzle, button.kind) {
+            BackgroundColor(BUTTON)
+        } else {
+            BackgroundColor(POWER_UP_EMPTY_COLOR)
+        };
+    }
+}
+
+/// Whether spending this power-up right now would actually do something.
+pub fn usable(power_ups: &PowerUps, puzzle: &ColorPuzzle, kind: PowerUp) -> bool {
+    if power_ups.count(kind) == 0 {
+        return false;
+    }
+
+    match kind {
+        PowerUp::ExtraLife => puzzle.uses_lives() && puzzle.lives() < puzzle.max_lives(),
+        PowerUp::EliminateWrong => true,
     }
 }

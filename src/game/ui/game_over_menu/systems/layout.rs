@@ -135,6 +135,15 @@ pub fn build_game_over_menu(
                     spawn_button(
                         parent,
                         asset_server,
+                        "COMPARTILHAR",
+                        button_style(width),
+                        text_width,
+                        BUTTON,
+                        ShareScoreButton,
+                    );
+                    spawn_button(
+                        parent,
+                        asset_server,
                         "VER HISTORICO",
                         button_style(width),
                         text_width,

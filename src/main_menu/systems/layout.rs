@@ -107,10 +107,13 @@ pub fn build_main_menu(
     // The card is a bordered wrapper around a padded row, so the text column has
     // the wrapper's padding and the chip's width taken off it.
     let text_width = mode_card_text_width(width);
-    // The resume card, when there is one, is a card like the others and has to
-    // be counted when the list is fitted to the window.
-    let resume = saved_run.get();
-    let cards = GameMode::iter().count() + usize::from(resume.is_some());
+    // One card per mode, always: a mode with a stored run resumes it from its
+    // own card rather than from a separate one at the top, so the list has a
+    // fixed length and the card the player reaches for does not move.
+    // The goals button is a row like the others as far as the fit is
+    // concerned, so it is counted here — otherwise the five cards claim the
+    // whole height and it lands off the bottom of a short screen.
+    let cards = GameMode::iter().count() + 1;
     let card_height = mode_card_height(height, cards);
     let chip_size = mode_chip_size(card_height);
 
@@ -139,61 +142,80 @@ pub fn build_main_menu(
                     ));
                 });
 
-            // Offered first, and only when there is a run worth coming back
-            // to: a player who left mid-run is here to finish it, not to read
-            // the mode list again.
-            if let Some(run) = resume {
-                let game_mode = run.game_mode;
-
-                // The lives are part of what the player is coming back to, so
-                // the card says how many are left rather than making the
-                // resumed run reveal it.
-                let footnote = if game_mode.starting_lives().is_some() {
-                    format!("PONTOS: {} - VIDAS: {}", run.score, run.lives)
-                } else {
-                    format!("PONTOS: {}", run.score)
-                };
-
-                spawn_card(
-                    parent,
-                    asset_server,
-                    game_mode.accent(),
-                    width,
-                    card_height,
-                    chip_size,
-                    text_width,
-                    "CONTINUAR",
-                    &format!("{} - NIVEL {}", game_mode.as_str().to_uppercase(), level_for_score(run.score)),
-                    Some(footnote),
-                    ContinueRunButton {
-                        game_mode,
-                        score: run.score,
-                        lives: run.lives,
-                    },
-                );
-            }
-
             for game_mode in GameMode::iter() {
-                // Show the target before the run rather than only after it: the
-                // number to beat is what the run is for.
                 let best = best_scores.get(game_mode);
-                let footnote = (best > 0).then(|| format!("RECORDE: {}", best));
+                let title = game_mode.as_str().to_uppercase();
 
-                spawn_card(
-                    parent,
-                    asset_server,
-                    game_mode.accent(),
-                    width,
-                    card_height,
-                    chip_size,
-                    text_width,
-                    &game_mode.as_str().to_uppercase(),
-                    // Say what the mode is before the player commits to it.
-                    &game_mode.description().to_uppercase(),
-                    footnote,
-                    PlayButton { game_mode },
-                );
+                match saved_run.get(game_mode) {
+                    // A mode with a run in progress leads with where that run
+                    // got to. The player who left mid-run is here to finish it,
+                    // and the level is what says how far in they were.
+                    Some(run) => {
+                        // The lives are part of what is being come back to, so
+                        // the card says how many are left rather than making
+                        // the resumed run reveal it.
+                        let footnote = if game_mode.starting_lives().is_some() {
+                            format!("PONTOS: {} - VIDAS: {}", run.score, run.lives)
+                        } else {
+                            format!("PONTOS: {}", run.score)
+                        };
+
+                        spawn_card(
+                            parent,
+                            asset_server,
+                            game_mode.accent(),
+                            width,
+                            card_height,
+                            chip_size,
+                            text_width,
+                            &title,
+                            &format!("CONTINUAR - NIVEL {}", level_for_score(run.score)),
+                            Some(footnote),
+                            ContinueRunButton {
+                                game_mode,
+                                score: run.score,
+                                lives: run.lives,
+                                power_ups: run.power_ups,
+                            },
+                        );
+                    }
+                    // Nothing stored: say what the mode is before the player
+                    // commits to it, and show the target, because the number to
+                    // beat is what the run is for.
+                    None => spawn_card(
+                        parent,
+                        asset_server,
+                        game_mode.accent(),
+                        width,
+                        card_height,
+                        chip_size,
+                        text_width,
+                        &title,
+                        &game_mode.description().to_uppercase(),
+                        (best > 0).then(|| format!("RECORDE: {}", best)),
+                        PlayButton { game_mode },
+                    ),
+                }
             }
+
+            // Below the modes, not above: the list is what the player came for,
+            // and the goals are read between runs rather than instead of one.
+            parent
+                .spawn((
+                    (
+                        Button,
+                        theme::button_style(width),
+                        BackgroundColor(theme::SURFACE_RAISED),
+                    ),
+                    AchievementsButton,
+                ))
+                .with_children(|parent| {
+                    parent.spawn(theme::wrapped_text(
+                        "METAS",
+                        theme::text_button(asset_server),
+                        width,
+                    ));
+                });
         })
         .id()
 }

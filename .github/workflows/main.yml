@@ -53,7 +53,15 @@ jobs:
 
       - name: Copy web files
         run: |
+          # Everything the page needs that is not built from source. The wasm
+          # and its JS glue come from wasm-bindgen above; these are the
+          # committed ones. A file added to docs/ and forgotten here simply
+          # never reaches the site, which is silent — the PWA would install and
+          # then 404 on its own manifest.
           cp docs/index.html dist/index.html
+          cp docs/manifest.webmanifest dist/manifest.webmanifest
+          cp docs/sw.js dist/sw.js
+          cp -r docs/icons dist/icons
           cp -r assets dist/assets
 
       - name: Add .nojekyll

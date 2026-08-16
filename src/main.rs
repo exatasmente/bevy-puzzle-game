@@ -24,6 +24,9 @@ use feedback::*;
 mod interaction_animation;
 use interaction_animation::*;
 
+mod achievements_menu;
+use achievements_menu::AchievementsMenuPlugin;
+
 mod audio;
 mod board;
 mod layout;
@@ -77,6 +80,7 @@ fn main() {
             FeedbackPlugin,
             audio::GameAudioPlugin,
             InteractionAnimationPlugin,
+            AchievementsMenuPlugin,
         ))
 
         // Startup Systems
@@ -102,4 +106,6 @@ pub enum AppState {
     History,
     GameOverResume,
     GameOver,
+    /// The goals list, reached from the main menu.
+    Achievements,
 }

@@ -16,12 +16,14 @@ impl Plugin for PuzzlePlugin {
             .add_message::<LastInteractionEvent>()
             .add_message::<RenderLevelHistoryEvent>()
             .add_message::<NewGameEvent>()
+            .add_message::<UsePowerUpEvent>()
             .init_resource::<ColorPuzzle>()
             .init_resource::<GameHistory>()
             .init_resource::<GameTimer>()
             .init_resource::<PendingLevelStart>()
             .init_resource::<MemoryPhase>()
             .init_resource::<RoundIntro>()
+            .init_resource::<PowerUps>()
             .register_type::<ColorPuzzle>()
             .add_systems(OnEnter(crate::AppState::Game), start_puzzle_level)
             .add_systems(OnExit(crate::AppState::Game), despaw_objects)
@@ -39,6 +41,8 @@ impl Plugin for PuzzlePlugin {
                 tick_round_intro,
                 hide_memory_board,
                 player_interaction,
+                award_power_ups,
+                apply_power_up,
             ).run_if(in_state(crate::AppState::Game)))
             .add_systems(Update, background_transition);
 
