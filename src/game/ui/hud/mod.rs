@@ -21,11 +21,15 @@ impl Plugin for HudPlugin {
     fn build(&self, app: &mut App) {
         app
             // OnEnter Systems
-            .add_system(spawn_hud.in_schedule(OnEnter(AppState::Game)))
-            .add_system(spawn_back_button.in_schedule(OnEnter(AppState::LevelHistory)))
+            .add_systems(OnEnter(AppState::Game), spawn_hud)
+            .add_systems(OnEnter(AppState::LevelHistory), spawn_back_button)
             // Systems
-            .add_system(interact_with_history_back_button.run_if(in_state(AppState::LevelHistory)))
             .add_systems(
+                Update,
+                interact_with_history_back_button.run_if(in_state(AppState::LevelHistory)),
+            )
+            .add_systems(
+                Update,
                 (
                     interact_with_pause_button,
                     update_score_text,
@@ -34,10 +38,10 @@ impl Plugin for HudPlugin {
                     update_lives_pips,
                     update_level_progress,
                 )
-                    .in_set(OnUpdate(AppState::Game)),
+                    .run_if(in_state(AppState::Game)),
             )
             // OnExit Systems
-            .add_system(despawn_hud.in_schedule(OnExit(AppState::Game)))
-            .add_system(despawn_back_button.in_schedule(OnExit(AppState::LevelHistory)));
+            .add_systems(OnExit(AppState::Game), despawn_hud)
+            .add_systems(OnExit(AppState::LevelHistory), despawn_back_button);
     }
 }

@@ -22,8 +22,8 @@ pub fn relayout_game_history_menu(
     mut relayout_events: MessageReader<crate::layout::RelayoutEvent>,
     mut spawn_pagination_event_writer: MessageWriter<SpawnPaginationEvent>,
 ) {
-    if relayout_events.iter().next().is_some() {
-        spawn_pagination_event_writer.send(SpawnPaginationEvent);
+    if relayout_events.read().next().is_some() {
+        spawn_pagination_event_writer.write(SpawnPaginationEvent);
     }
 }
 
@@ -36,7 +36,7 @@ pub fn spawn_pagination_itens(
     volume: Res<crate::audio::Volume>,
     window_query: Query<&Window>,
 ) {
-    if spawn_pagination_event_reader.iter().count() == 0 {
+    if spawn_pagination_event_reader.read().count() == 0 {
         return;
     }
 
@@ -51,7 +51,7 @@ pub fn spawn_pagination_itens(
     let Some(parent) = pagination.get_entity() else {
         return;
     };
-    commands.entity(parent).despawn_descendants();
+    commands.entity(parent).despawn_related::<Children>();
 
     commands.entity(parent).with_children(|parent| {
         parent.spawn(theme::wrapped_text(
@@ -115,7 +115,7 @@ pub fn spawn_pagination_itens(
 
 fn build_actions(
     asset_server: &Res<AssetServer>,
-    parent: &mut ChildBuilder,
+    parent: &mut ChildSpawnerCommands,
     width: f32,
     sound_label: String,
 ) {
@@ -175,7 +175,7 @@ fn build_actions(
 
 fn build_pagination_element(
     asset_server: &Res<AssetServer>,
-    parent: &mut ChildBuilder,
+    parent: &mut ChildSpawnerCommands,
     pagination: &mut ResMut<Pagination>,
     width: f32,
 ) {
@@ -222,7 +222,7 @@ fn build_pagination_element(
 }
 
 fn spawn_pagination_button(
-    parent: &mut ChildBuilder,
+    parent: &mut ChildSpawnerCommands,
     asset_server: &Res<AssetServer>,
     label: &str,
     index: usize,
@@ -262,10 +262,8 @@ pub fn update_sound_label(
     let label = volume.label();
 
     for mut text in query.iter_mut() {
-        if let Some(section) = text.sections.first_mut() {
-            if section.value != label {
-                section.value = label.clone();
-            }
+        if text.0 != label {
+            text.0 = label.clone();
         }
     }
 }

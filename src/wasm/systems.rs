@@ -6,7 +6,7 @@ pub fn transition_to_state(
     mut app_state_next_state: ResMut<NextState<AppState>>,
     mut events: MessageReader<TransitionToStateEvent>,
 ) {
-    let event = events.iter().next();
+    let event = events.read().next();
 
     if event.is_none() {
         return;

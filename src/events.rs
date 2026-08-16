@@ -1,6 +1,7 @@
 use crate::AppState;
-use bevy::prelude::Vec2;
+use bevy::prelude::{Message, Vec2};
 
+#[derive(Message)]
 pub struct TransitionToStateEvent {
     pub state: AppState,
 }
@@ -11,6 +12,7 @@ pub struct TransitionToStateEvent {
 /// The previous version carried only a position, so a correct pick and a wrong
 /// pick produced identical animations — the player had to infer the result from
 /// the score counter. Feedback that ambiguous cannot reinforce anything.
+#[derive(Message)]
 pub struct InteractionAnimationEvent {
     pub position: Vec2,
     pub scored: bool,

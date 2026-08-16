@@ -146,7 +146,7 @@ pub struct TextStyle {
 
 impl TextStyle {
     /// The components Bevy actually wants, with the fitted size applied.
-    fn into_parts(self) -> (TextFont, TextColor) {
+    pub fn into_parts(self) -> (TextFont, TextColor) {
         (
             TextFont {
                 font: self.font.into(),

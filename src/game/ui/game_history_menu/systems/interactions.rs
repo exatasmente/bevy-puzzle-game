@@ -24,10 +24,10 @@ pub fn interact_with_level_history_option(
         match *interaction {
             Interaction::Pressed => {
                 *color = BUTTON_PRESSED.into();
-                transition_to_state_event_writer.send(TransitionToStateEvent {
+                transition_to_state_event_writer.write(TransitionToStateEvent {
                     state: AppState::LevelHistory,
                 });
-                render_level_history_event_writer.send(RenderLevelHistoryEvent {
+                render_level_history_event_writer.write(RenderLevelHistoryEvent {
                     index: level_history_option.index,
                 });
             }
@@ -50,7 +50,7 @@ pub fn interact_with_pagination_button(
             Interaction::Pressed => {
                 *color = BUTTON_PRESSED.into();
                 pagination.set_page(pagination_button.index);
-                spawn_pagination_event_writer.send(SpawnPaginationEvent);
+                spawn_pagination_event_writer.write(SpawnPaginationEvent);
             }
             Interaction::Hovered => *color = BUTTON_HOVERED.into(),
             Interaction::None => *color = BUTTON.into(),
@@ -75,9 +75,9 @@ pub fn interact_with_continue_button(
                 // An Infinite run has no clock to expire, so it always resumes.
                 // Testing the timer alone used to send it to the game-over
                 // screen, because a zero-length timer reads as finished.
-                let run_is_over = puzzle.game_mode.is_timed() && game_timer.timer.finished();
+                let run_is_over = puzzle.game_mode.is_timed() && game_timer.timer.is_finished();
 
-                transition_to_state_event_writer.send(TransitionToStateEvent {
+                transition_to_state_event_writer.write(TransitionToStateEvent {
                     state: if run_is_over {
                         AppState::GameOver
                     } else {
@@ -112,7 +112,7 @@ pub fn interact_with_end_run_button(
                 game_history.set_game_mode(puzzle.game_mode);
                 game_history.set_total_time(game_timer.timer.elapsed_secs());
 
-                transition_to_state_event_writer.send(TransitionToStateEvent {
+                transition_to_state_event_writer.write(TransitionToStateEvent {
                     state: AppState::GameOverResume,
                 });
             }

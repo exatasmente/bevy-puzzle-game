@@ -13,7 +13,8 @@ pub fn game_over_menu_style() -> Node {
     display: Display::Flex,
     justify_content: JustifyContent::Center,
     align_items: AlignItems::Center,
-    size: Size::new(Val::Percent(100.0), Val::Percent(100.0)),
+    width: Val::Percent(100.0),
+    height: Val::Percent(100.0),
     ..Node::DEFAULT
 }
 }
@@ -24,7 +25,8 @@ pub fn game_over_menu_container_style() -> Node {
     flex_direction: FlexDirection::Column,
     justify_content: JustifyContent::Center,
     align_items: AlignItems::Center,
-    size: Size::new(Val::Percent(100.0), Val::Percent(100.0)),
+    width: Val::Percent(100.0),
+    height: Val::Percent(100.0),
     // Vertical only, and SPACE_MD rather than SPACE_LG: the summary is a tall
     // stack — score, record, stats, three buttons — and the larger padding was
     // enough to push the last button off a short screen.
@@ -34,7 +36,8 @@ pub fn game_over_menu_container_style() -> Node {
         top: Val::Px(theme::SPACE_MD),
         bottom: Val::Px(theme::SPACE_MD),
     },
-    gap: Size::new(Val::Px(theme::SPACE_SM), Val::Px(theme::SPACE_SM)),
+    column_gap: Val::Px(theme::SPACE_SM),
+    row_gap: Val::Px(theme::SPACE_SM),
     ..Node::DEFAULT
 }
 }
@@ -48,7 +51,8 @@ pub fn stat_row_style(width: f32) -> Node {
         align_items: AlignItems::Center,
         width: Val::Px(width),
         height: Val::Auto,
-        min_size: Size::new(Val::Px(width), Val::Px(30.0)),
+        min_width: Val::Px(width),
+        min_height: Val::Px(30.0),
         ..Node::DEFAULT
     }
 }
@@ -60,7 +64,8 @@ pub fn button_style(width: f32) -> Node {
 /// Primary action: taller than the rest so the thumb finds it first.
 pub fn primary_button_style(width: f32) -> Node {
     Node {
-        min_size: Size::new(Val::Px(width), Val::Px(60.0)),
+        min_width: Val::Px(width),
+        min_height: Val::Px(60.0),
         margin: UiRect::all(Val::Px(theme::SPACE_SM)),
         ..theme::button_style(width)
     }

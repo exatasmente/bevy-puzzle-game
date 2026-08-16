@@ -8,7 +8,7 @@ pub struct WasmPlugin;
 
 impl Plugin for WasmPlugin {
     fn build(&self, app: &mut App) {
-        app.add_system(transition_to_state);
+        app.add_systems(Update, transition_to_state);
           
     }
 }

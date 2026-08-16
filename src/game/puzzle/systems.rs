@@ -3,7 +3,7 @@ use std::time::Duration;
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy_prototype_lyon::prelude::*;
-use bevy::core_pipeline::clear_color::ClearColorConfig;
+use bevy::camera::ClearColorConfig;
 use crate::events::InteractionAnimationEvent;
 use crate::feedback::BannerEvent;
 use crate::theme;
@@ -32,9 +32,9 @@ pub fn player_interaction(
     mut commands: Commands,
     windows: Query<&Window>,
     camera_q: Query<(&Camera, &GlobalTransform)>,
-    event_click  : Res<Input<MouseButton>>,
+    event_click  : Res<ButtonInput<MouseButton>>,
     touches: Res<Touches>,
-    mut object_query: Query<(&Transform, &PuzzleColor, &mut Fill), With<PuzzleColor>>,
+    mut object_query: Query<(&Transform, &PuzzleColor, &mut Shape), With<PuzzleColor>>,
     ui_interaction_query: Query<&Interaction>,
     mut puzzle: ResMut<ColorPuzzle>,
     mut game_timer: ResMut<GameTimer>,
@@ -45,8 +45,12 @@ pub fn player_interaction(
     last_click_query: Query<Entity, With<LastClick>>,
 ) {
 
-    let window = windows.single();
-    let (camera, camera_transform) = camera_q.single();
+    let Ok(window) = windows.single() else {
+        return;
+    };
+    let Ok((camera, camera_transform)) = camera_q.single() else {
+        return;
+    };
 
     // Tapping a HUD button used to also register as a puzzle pick, which now
     // means pausing the game would break the player's streak. Ignore world
@@ -97,12 +101,12 @@ pub fn player_interaction(
             return;
         };
 
-        let Some(world_position) = camera.viewport_to_world_2d(camera_transform, screen_position) else {
+        let Ok(world_position) = camera.viewport_to_world_2d(camera_transform, screen_position) else {
             return;
         };
 
         for last_click in last_click_query.iter() {
-            commands.entity(last_click).despawn_recursive();
+            commands.entity(last_click).despawn();
         }
 
         let mut scored = false;
@@ -139,7 +143,7 @@ pub fn player_interaction(
             }
         }
 
-        events.animation.send(InteractionAnimationEvent {
+        events.animation.write(InteractionAnimationEvent {
             position: world_position,
             scored,
             bonus_seconds,
@@ -159,10 +163,10 @@ pub fn player_interaction(
                 format!("NIVEL {}", puzzle.level())
             };
 
-            events.banner.send(BannerEvent::large(text, theme::ACCENT));
+            events.banner.write(BannerEvent::large(text, theme::ACCENT));
         }
 
-        events.last_interaction.send(LastInteractionEvent::new(
+        events.last_interaction.write(LastInteractionEvent::new(
             world_position,
             puzzle.get_correct_color_index(),
             colors,
@@ -171,7 +175,7 @@ pub fn player_interaction(
 
         if scored {
             // Keep the momentum: a correct pick moves straight on.
-            events.start_level.send(StartLevelEvent);
+            events.start_level.write(StartLevelEvent);
         } else {
             // Missing is no longer free. A mode with a clock pays in seconds; a
             // mode without one pays a life, which is also the only thing that
@@ -204,8 +208,8 @@ pub fn player_interaction(
             // the length of the hold, so a missed Memory round still shows the
             // player what they were supposed to have remembered.
             if memory_phase.is_hidden() {
-                for (_, puzzle_color, mut fill) in object_query.iter_mut() {
-                    *fill = Fill::color(puzzle_color.color);
+                for (_, puzzle_color, mut shape) in object_query.iter_mut() {
+                    shape.fill = Some(Fill::color(puzzle_color.color));
                 }
             }
         }
@@ -248,7 +252,7 @@ fn square_corners(size: f32) -> Vec<Vec2> {
 /// children so the cell entity stays exactly what the rest of the game expects:
 /// one `PuzzleColor` per cell, positioned at its bottom-left corner, which is
 /// what the hit test and the answer reveal are written against.
-fn spawn_tile_arms(parent: &mut ChildBuilder, tile: Tile, size: f32, color: Color) {
+fn spawn_tile_arms(parent: &mut ChildSpawnerCommands, tile: Tile, size: f32, color: Color) {
     let edges = tile.edges();
 
     // A piece with no arms is a blank plate. Drawing its hub anyway would put a
@@ -267,15 +271,12 @@ fn spawn_tile_arms(parent: &mut ChildBuilder, tile: Tile, size: f32, color: Colo
     let hub = shapes::Rectangle {
         extents: Vec2::splat(arm_width),
         origin: shapes::RectangleOrigin::Center,
+        radii: None,
     };
 
     parent.spawn((
-        ShapeBundle {
-            path: GeometryBuilder::build_as(&hub),
-            transform: Transform::from_xyz(0.0, 0.0, 0.01),
-            ..default()
-        },
-        Fill::color(color),
+        ShapeBuilder::with(&hub).fill(Fill::color(color)).build(),
+        Transform::from_xyz(0.0, 0.0, 0.01),
     ));
 
     // Each arm runs from inside the hub out to the edge it points at, so the
@@ -298,15 +299,12 @@ fn spawn_tile_arms(parent: &mut ChildBuilder, tile: Tile, size: f32, color: Colo
         let arm = shapes::Rectangle {
             extents,
             origin: shapes::RectangleOrigin::Center,
+            radii: None,
         };
 
         parent.spawn((
-            ShapeBundle {
-                path: GeometryBuilder::build_as(&arm),
-                transform: Transform::from_xyz(position.x, position.y, 0.01),
-                ..default()
-            },
-            Fill::color(color),
+            ShapeBuilder::with(&arm).fill(Fill::color(color)).build(),
+            Transform::from_xyz(position.x, position.y, 0.01),
         ));
     }
 }
@@ -320,15 +318,15 @@ pub fn hide_memory_board(
     time: Res<Time>,
     puzzle: Res<ColorPuzzle>,
     mut memory_phase: ResMut<MemoryPhase>,
-    mut square_query: Query<&mut Fill, With<PuzzleColor>>,
+    mut square_query: Query<&mut Shape, With<PuzzleColor>>,
 ) {
     if !memory_phase.tick(time.delta()) {
         return;
     }
 
     let hidden = puzzle.hidden_color();
-    for mut fill in square_query.iter_mut() {
-        *fill = Fill::color(hidden);
+    for mut shape in square_query.iter_mut() {
+        shape.fill = Some(Fill::color(hidden));
     }
 }
 
@@ -367,7 +365,7 @@ pub fn advance_pending_level(
         return;
     }
 
-    start_level_event_writer.send(StartLevelEvent);
+    start_level_event_writer.write(StartLevelEvent);
 }
 
 
@@ -377,10 +375,10 @@ pub fn render_game_history(
     mut render_game_history_events: MessageReader<RenderLevelHistoryEvent>,
     mut object_query: Query<Entity, With<PuzzleColor>>,
     mut last_click_query: Query<Entity, With<LastClick>>,
-    mut camera_query: Query<(&mut Camera2d, &mut BackgroundTranstion), With<Camera>>,
+    mut camera_query: Query<(&mut Camera, &mut BackgroundTranstion), With<Camera2d>>,
 ) {
 
-    let render_event = render_game_history_events.iter().next();
+    let render_event = render_game_history_events.read().next();
 
     if render_event.is_none() {
         return;
@@ -389,16 +387,18 @@ pub fn render_game_history(
     let event = render_event.unwrap();
 
     for entity in object_query.iter_mut() {
-        commands.entity(entity).despawn_recursive();
+        commands.entity(entity).despawn();
     }
 
     for entity in last_click_query.iter_mut() {
-        commands.entity(entity).despawn_recursive();
+        commands.entity(entity).despawn();
     }
 
 
     let level_history = game_history.get_level_history(event.index);
-    let (mut camera, mut background_transition) = camera_query.single_mut();
+    let Ok((mut camera, mut background_transition)) = camera_query.single_mut() else {
+        return;
+    };
 
     // A replay is read, not played, so it sits on the plain app background
     // rather than reproducing the round's sweep.
@@ -421,16 +421,8 @@ pub fn render_game_history(
 
         commands
             .spawn((
-                ShapeBundle {
-                    path: GeometryBuilder::build_as(&shape),
-                    transform: Transform::from_xyz(
-                        color.x,
-                        color.y,
-                        z
-                    ),
-                    ..default()
-                },
-                plate,
+                ShapeBuilder::with(&shape).fill(plate).build(),
+                Transform::from_xyz(color.x, color.y, z),
                 PuzzleColor { index, is_correct_color:  color.is_correct_color, x : color.x , y:  color.y, color: color.color.clone(), corners: color.corners.clone(), tile: color.tile },
             ))
             .with_children(|parent| {
@@ -450,16 +442,10 @@ pub fn render_game_history(
                     .collect::<Vec<_>>(),
             );
             commands .spawn((
-                ShapeBundle {
-                    path: GeometryBuilder::build_as(&inner_shape),
-                    transform: Transform::from_xyz(
-                        color.x + 10.0,
-                        color.y + 10.0,
-                        z + 0.01
-                    ),
-                    ..default()
-                },
-                Fill::color(Color::WHITE),
+                ShapeBuilder::with(&inner_shape)
+                    .fill(Fill::color(Color::WHITE))
+                    .build(),
+                Transform::from_xyz(color.x + 10.0, color.y + 10.0, z + 0.01),
                 LastClick,
             ));
         }
@@ -468,20 +454,19 @@ pub fn render_game_history(
 
     let shape_clicked_position =  shapes::Rectangle {
         extents: Vec2::new(30.0, 30.0),
-        origin: shapes::RectangleOrigin::Center ,
+        origin: shapes::RectangleOrigin::Center,
+        radii: None,
     };
 
     commands .spawn((
-        ShapeBundle {
-            path: GeometryBuilder::build_as(&shape_clicked_position),
-            transform: Transform::from_xyz(
-                level_history.clicked_position.x,
-                level_history.clicked_position.y,
-                1.0
-            ),
-            ..default()
-        },
-        Fill::color(theme::DANGER),
+        ShapeBuilder::with(&shape_clicked_position)
+            .fill(Fill::color(theme::DANGER))
+            .build(),
+        Transform::from_xyz(
+            level_history.clicked_position.x,
+            level_history.clicked_position.y,
+            1.0,
+        ),
         LastClick,
     ));
 
@@ -491,7 +476,7 @@ pub fn store_last_interaction_state(
     mut last_interaction_events: MessageReader<LastInteractionEvent>,
     mut game_history: ResMut<GameHistory>,
 ) {
-    let level_history =last_interaction_events.iter().next();
+    let level_history =last_interaction_events.read().next();
 
     if level_history.is_none() {
         return;
@@ -521,11 +506,13 @@ impl Default for GameTimer {
 
 
 pub fn background_transition(
-    mut camera_query: Query<(&mut Camera2d, &mut BackgroundTranstion), With<Camera>>,
+    mut camera_query: Query<(&mut Camera, &mut BackgroundTranstion), With<Camera2d>>,
     time : Res<Time>,
 ) {
 
-    let (mut camera, mut background_transition) = camera_query.single_mut();
+    let Ok((mut camera, mut background_transition)) = camera_query.single_mut() else {
+        return;
+    };
 
     if background_transition.is_in_transition() {
         camera.clear_color = ClearColorConfig::Custom(background_transition.get_current_color());
@@ -558,7 +545,7 @@ pub fn tick_game_timer(
 
     game_timer.timer.tick(time.delta());
 
-    if game_timer.timer.finished() {
+    if game_timer.timer.is_finished() {
         game_history.set_game_mode(puzzle.game_mode);
         game_history.set_total_time(game_timer.timer.duration().as_secs_f32());
         app_state_next_state.set(crate::AppState::GameOverResume);
@@ -569,14 +556,14 @@ pub fn spawn_objects(
     mut commands: Commands,
     mut object_query: Query<Entity, With<PuzzleColor>>,
     mut puzzle: ResMut<ColorPuzzle>,
-    mut camera_query: Query<(&mut Camera2d, &mut BackgroundTranstion), With<Camera>>,
+    mut camera_query: Query<(&mut Camera, &mut BackgroundTranstion), With<Camera2d>>,
     mut last_click_query: Query<Entity, With<LastClick>>,
     mut memory_phase: ResMut<MemoryPhase>,
     mut round_intro: ResMut<RoundIntro>,
     mut start_level_events: MessageReader<StartLevelEvent>,
 ) {
 
-    if start_level_events.iter().next().is_none() {
+    if start_level_events.read().next().is_none() {
         return;
     }
 
@@ -584,17 +571,19 @@ pub fn spawn_objects(
 
     // Recursive: a mosaic cell owns the nodes its piece is drawn from.
     for entity in object_query.iter_mut() {
-        commands.entity(entity).despawn_recursive();
+        commands.entity(entity).despawn();
     }
 
     for entity in last_click_query.iter_mut() {
-        commands.entity(entity).despawn_recursive();
+        commands.entity(entity).despawn();
     }
 
     let previous_background = puzzle.background_color();
     puzzle.generate_colors();
 
-    let (mut camera, mut background_transition) = camera_query.single_mut();
+    let Ok((mut camera, mut background_transition)) = camera_query.single_mut() else {
+        return;
+    };
 
     // The ground sweeps every color on the board and lands on the answer's.
     // Each group melts into the ground as the sweep passes its color; the
@@ -669,12 +658,8 @@ pub fn spawn_objects(
 
         commands
             .spawn((
-                ShapeBundle {
-                    path: GeometryBuilder::build_as(&shape),
-                    transform: Transform::from_xyz(centre.x, centre.y, z),
-                    ..default()
-                },
-                Fill::color(plate),
+                ShapeBuilder::with(&shape).fill(Fill::color(plate)).build(),
+                Transform::from_xyz(centre.x, centre.y, z),
                 PuzzleColor {
                     index,
                     is_correct_color,
@@ -712,7 +697,9 @@ pub fn start_puzzle_level(
     memory_phase.clear();
     round_intro.clear();
 
-    let window = window_query.single();
+    let Ok(window) = window_query.single() else {
+        return;
+    };
     puzzle.set_window_size(window.width(), window.height());
 
     // Infinite runs never reach the timer-expiry path, so without this the
@@ -725,15 +712,15 @@ pub fn start_puzzle_level(
 
 
 
-    if game_timer.timer.finished() {
+    if game_timer.timer.is_finished() {
         game_timer.timer = puzzle.setup_timer();
     }
 
-    if game_timer.timer.paused() {
+    if game_timer.timer.is_paused() {
         game_timer.timer.unpause();
     }
 
-    start_level_event_writer.send(StartLevelEvent);
+    start_level_event_writer.write(StartLevelEvent);
 
 }
 
@@ -745,7 +732,7 @@ pub fn handle_new_game_event(
     mut app_state_next_state: ResMut<NextState<crate::AppState>>,
     window_query: Query<&Window, With<Window>>
 ) {
-    let events = new_game_event_reader.iter().next();
+    let events = new_game_event_reader.read().next();
 
     if events.is_none() {
         return;
@@ -753,7 +740,9 @@ pub fn handle_new_game_event(
 
     let event = events.unwrap();
 
-    let window = window_query.single();
+    let Ok(window) = window_query.single() else {
+        return;
+    };
     puzzle.setup(&event.game_mode);
     puzzle.set_window_size(window.width(), window.height());
 
@@ -761,11 +750,11 @@ pub fn handle_new_game_event(
 
     if game_timer.timer.duration().as_secs_f32() != puzzle.start_seconds {
         game_timer.timer = puzzle.setup_timer();
-    } else if game_timer.timer.finished() {
+    } else if game_timer.timer.is_finished() {
         game_timer.timer = puzzle.setup_timer();
     }
 
-    if game_timer.timer.paused() {
+    if game_timer.timer.is_paused() {
         game_timer.timer.unpause();
     }
 
@@ -796,7 +785,7 @@ pub fn despaw_objects(
     round_intro.clear();
 
     for entity in object_query.iter_mut() {
-        commands.entity(entity).despawn_recursive();
+        commands.entity(entity).despawn();
     }
 
     puzzle.generate_colors();

@@ -156,10 +156,10 @@ pub fn build_game_over_menu(
 }
 
 fn spawn_button<M: Component>(
-    parent: &mut ChildBuilder,
+    parent: &mut ChildSpawnerCommands,
     asset_server: &Res<AssetServer>,
     label: &str,
-    style: Style,
+    style: Node,
     text_width: f32,
     color: Color,
     marker: M,
@@ -188,7 +188,7 @@ pub fn relayout_game_over_menu(
     outcome: Res<LastRunOutcome>,
     window_query: Query<&Window>,
 ) {
-    if relayout_events.iter().next().is_none() {
+    if relayout_events.read().next().is_none() {
         return;
     }
 
@@ -197,7 +197,7 @@ pub fn relayout_game_over_menu(
     };
 
     for entity in menu_query.iter() {
-        commands.entity(entity).despawn_recursive();
+        commands.entity(entity).despawn();
     }
 
     build_game_over_menu(
@@ -214,7 +214,7 @@ pub fn despawn_game_over_menu(
     game_over_menu_query: Query<Entity, With<GameOverMenu>>,
 ) {
     for entity in game_over_menu_query.iter() {
-        commands.entity(entity).despawn_recursive();
+        commands.entity(entity).despawn();
     }
 }
 
@@ -261,6 +261,6 @@ pub fn despawn_resume_screen(
     game_over_menu_query: Query<Entity, With<GameOverMenu>>,
 ) {
     for entity in game_over_menu_query.iter() {
-        commands.entity(entity).despawn_recursive();
+        commands.entity(entity).despawn();
     }
 }

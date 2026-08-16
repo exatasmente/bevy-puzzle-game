@@ -13,6 +13,8 @@ apt-get install -y \
   pkg-config \
   libasound2-dev \
   libudev-dev \
+  libwayland-dev \
+  libxkbcommon-dev \
   alsa
 
 ## Install rustup and common components

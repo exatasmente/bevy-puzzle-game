@@ -28,12 +28,18 @@ pub struct AnswerReveal(Timer);
 
 impl Plugin for InteractionAnimationPlugin {
     fn build(&self, app: &mut App) {
-        app.add_system(animate_interaction.run_if(in_state(AppState::Game)))
-            .add_system(fade_answer_reveal.run_if(in_state(AppState::Game)))
-            .add_system(handle_interaction_animation_events.run_if(in_state(AppState::Game)))
-            // These animations are driven only while playing, so leaving the
-            // state mid-animation would otherwise strand them on screen frozen.
-            .add_system(despawn_effects.in_schedule(OnExit(AppState::Game)));
+        app.add_systems(
+            Update,
+            (
+                animate_interaction,
+                fade_answer_reveal,
+                handle_interaction_animation_events,
+            )
+                .run_if(in_state(AppState::Game)),
+        )
+        // These animations are driven only while playing, so leaving the
+        // state mid-animation would otherwise strand them on screen frozen.
+        .add_systems(OnExit(AppState::Game), despawn_effects);
     }
 }
 
@@ -43,7 +49,7 @@ pub fn handle_interaction_animation_events(
     mut interaction_animation_events: MessageReader<InteractionAnimationEvent>,
     mut screen_shake_event_writer: MessageWriter<ScreenShakeEvent>,
 ) {
-    let Some(event) = interaction_animation_events.iter().next() else {
+    let Some(event) = interaction_animation_events.read().next() else {
         return;
     };
 
@@ -71,7 +77,7 @@ pub fn handle_interaction_animation_events(
         }
     } else {
         spawn_miss_cross(&mut commands, event.position);
-        screen_shake_event_writer.send(ScreenShakeEvent::miss());
+        screen_shake_event_writer.write(ScreenShakeEvent::miss());
 
         if let Some(correct_position) = event.correct_position {
             spawn_answer_reveal(&mut commands, correct_position, &event.correct_corners);
@@ -86,12 +92,10 @@ fn spawn_success_ring(commands: &mut Commands, position: Vec2) {
     };
 
     commands.spawn((
-        ShapeBundle {
-            path: GeometryBuilder::build_as(&ring),
-            transform: Transform::from_xyz(position.x, position.y, 4.0),
-            ..default()
-        },
-        Stroke::new(theme::SUCCESS, 5.0),
+        ShapeBuilder::with(&ring)
+            .stroke(Stroke::new(theme::SUCCESS, 5.0))
+            .build(),
+        Transform::from_xyz(position.x, position.y, 4.0),
         InteractionAnimation,
         InteractionAnimationTimer(Timer::from_seconds(0.45, TimerMode::Once)),
     ));
@@ -104,19 +108,18 @@ fn spawn_miss_cross(commands: &mut Commands, position: Vec2) {
         let bar = shapes::Rectangle {
             origin: shapes::RectangleOrigin::Center,
             extents: Vec2::new(40.0, 6.0),
+            radii: None,
         };
 
         commands.spawn((
-            ShapeBundle {
-                path: GeometryBuilder::build_as(&bar),
-                transform: Transform {
-                    translation: Vec3::new(position.x, position.y, 4.0),
-                    rotation: Quat::from_rotation_z(angle),
-                    ..default()
-                },
+            ShapeBuilder::with(&bar)
+                .fill(Fill::color(theme::DANGER))
+                .build(),
+            Transform {
+                translation: Vec3::new(position.x, position.y, 4.0),
+                rotation: Quat::from_rotation_z(angle),
                 ..default()
             },
-            Fill::color(theme::DANGER),
             InteractionAnimation,
             InteractionAnimationTimer(Timer::from_seconds(0.4, TimerMode::Once)),
         ));
@@ -134,12 +137,10 @@ fn spawn_answer_reveal(commands: &mut Commands, position: Vec2, corners: &[Vec2]
     };
 
     commands.spawn((
-        ShapeBundle {
-            path: GeometryBuilder::build_as(&outline),
-            transform: Transform::from_xyz(position.x, position.y, 3.0),
-            ..default()
-        },
-        Stroke::new(Color::WHITE, 4.0),
+        ShapeBuilder::with(&outline)
+            .stroke(Stroke::new(Color::WHITE, 4.0))
+            .build(),
+        Transform::from_xyz(position.x, position.y, 3.0),
         AnswerReveal(Timer::from_seconds(0.7, TimerMode::Once)),
     ));
 }
@@ -150,31 +151,32 @@ pub fn animate_interaction(
         Entity,
         &mut InteractionAnimationTimer,
         &mut Transform,
-        Option<&mut Stroke>,
-        Option<&mut Fill>,
+        &mut Shape,
     )>,
     time: Res<Time>,
 ) {
-    for (entity, mut timer, mut transform, stroke, fill) in query.iter_mut() {
+    for (entity, mut timer, mut transform, mut shape) in query.iter_mut() {
         timer.0.tick(time.delta());
 
-        if timer.0.finished() {
-            commands.entity(entity).despawn_recursive();
+        if timer.0.is_finished() {
+            commands.entity(entity).despawn();
             continue;
         }
 
-        let progress = timer.0.percent();
+        let progress = timer.0.fraction();
 
         // Expand quickly, then ease off.
         let scale = 1.0 + 1.6 * progress.sqrt();
         transform.scale = Vec3::new(scale, scale, 1.0);
 
+        // Fill and Stroke are fields of `Shape` now rather than components of
+        // their own; writing them here is what propagates to the mesh.
         let alpha = 1.0 - progress;
-        if let Some(mut stroke) = stroke {
-            stroke.color.set_a(alpha);
+        if let Some(stroke) = shape.stroke.as_mut() {
+            stroke.color.set_alpha(alpha);
         }
-        if let Some(mut fill) = fill {
-            fill.color.set_a(alpha);
+        if let Some(fill) = shape.fill.as_mut() {
+            fill.color.set_alpha(alpha);
         }
     }
 }
@@ -192,30 +194,32 @@ pub fn despawn_effects(
     >,
 ) {
     for entity in effects.iter() {
-        commands.entity(entity).despawn_recursive();
+        commands.entity(entity).despawn();
     }
 }
 
 pub fn fade_answer_reveal(
     mut commands: Commands,
-    mut query: Query<(Entity, &mut AnswerReveal, &mut Stroke)>,
+    mut query: Query<(Entity, &mut AnswerReveal, &mut Shape)>,
     time: Res<Time>,
 ) {
-    for (entity, mut reveal, mut stroke) in query.iter_mut() {
+    for (entity, mut reveal, mut shape) in query.iter_mut() {
         reveal.0.tick(time.delta());
 
-        if reveal.0.finished() {
-            commands.entity(entity).despawn_recursive();
+        if reveal.0.is_finished() {
+            commands.entity(entity).despawn();
             continue;
         }
 
         // Blink rather than fade: it has to read as an annotation on the board,
         // not as another particle.
-        let blink = if (reveal.0.percent() * 6.0) as u32 % 2 == 0 {
+        let blink = if (reveal.0.fraction() * 6.0) as u32 % 2 == 0 {
             1.0
         } else {
             0.25
         };
-        stroke.color.set_a(blink);
+        if let Some(stroke) = shape.stroke.as_mut() {
+            stroke.color.set_alpha(blink);
+        }
     }
 }

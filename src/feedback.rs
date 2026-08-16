@@ -20,13 +20,18 @@ impl Plugin for FeedbackPlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<ScreenShakeEvent>()
             .add_message::<BannerEvent>()
-            .add_system(animate_pop)
-            .add_system(animate_floating_text)
-            .add_system(handle_screen_shake_events)
-            .add_system(animate_screen_shake)
-            .add_system(handle_banner_events)
-            .add_system(animate_banner)
-            .add_system(animate_reveal_in);
+            .add_systems(
+                Update,
+                (
+                    animate_pop,
+                    animate_floating_text,
+                    handle_screen_shake_events,
+                    animate_screen_shake,
+                    handle_banner_events,
+                    animate_banner,
+                    animate_reveal_in,
+                ),
+            );
     }
 }
 
@@ -69,11 +74,11 @@ pub fn animate_pop(
         pop.timer.tick(time.delta());
 
         // Ease out: all of the punch up front, settling toward 1.0.
-        let remaining = 1.0 - pop.timer.percent();
+        let remaining = 1.0 - pop.timer.fraction();
         let scale = 1.0 + pop.strength * remaining * remaining;
         transform.scale = Vec3::new(scale, scale, 1.0);
 
-        if pop.timer.finished() {
+        if pop.timer.is_finished() {
             transform.scale = Vec3::ONE;
             commands.entity(entity).remove::<PopAnim>();
         }
@@ -97,13 +102,17 @@ pub fn spawn_floating_text(
     color: Color,
     position: Vec2,
 ) {
+    let (font, text_color) = theme::text(asset_server, theme::TEXT_MD, color).into_parts();
+
     commands.spawn((
-        Text2dBundle {
-            text: Text::from_section(value.into(), theme::text(asset_server, theme::TEXT_MD, color))
-                .with_alignment(TextAlignment::Center),
-            transform: Transform::from_xyz(position.x, position.y, 5.0),
+        Text2d::new(value.into()),
+        font,
+        text_color,
+        TextLayout {
+            justify: Justify::Center,
             ..default()
         },
+        Transform::from_xyz(position.x, position.y, 5.0),
         FloatingText {
             timer: Timer::from_seconds(0.9, TimerMode::Once),
             velocity: 90.0,
@@ -114,26 +123,24 @@ pub fn spawn_floating_text(
 pub fn animate_floating_text(
     mut commands: Commands,
     time: Res<Time>,
-    mut query: Query<(Entity, &mut FloatingText, &mut Transform, &mut Text)>,
+    mut query: Query<(Entity, &mut FloatingText, &mut Transform, &mut TextColor)>,
 ) {
-    for (entity, mut floating, mut transform, mut text) in query.iter_mut() {
+    for (entity, mut floating, mut transform, mut text_color) in query.iter_mut() {
         floating.timer.tick(time.delta());
 
         transform.translation.y += floating.velocity * time.delta_secs();
 
         // Hold the value legible for the first half, then fade.
-        let progress = floating.timer.percent();
+        let progress = floating.timer.fraction();
         let alpha = if progress < 0.5 {
             1.0
         } else {
             1.0 - (progress - 0.5) / 0.5
         };
-        for section in text.sections.iter_mut() {
-            section.style.color.set_a(alpha);
-        }
+        text_color.0.set_alpha(alpha);
 
-        if floating.timer.finished() {
-            commands.entity(entity).despawn_recursive();
+        if floating.timer.is_finished() {
+            commands.entity(entity).despawn();
         }
     }
 }
@@ -164,15 +171,13 @@ impl RevealIn {
 pub fn animate_reveal_in(
     mut commands: Commands,
     time: Res<Time>,
-    mut query: Query<(Entity, &mut RevealIn, &mut Text)>,
+    mut query: Query<(Entity, &mut RevealIn, &mut TextColor)>,
 ) {
-    for (entity, mut reveal, mut text) in query.iter_mut() {
+    for (entity, mut reveal, mut text_color) in query.iter_mut() {
         reveal.elapsed += time.delta_secs();
 
         let alpha = ((reveal.elapsed - reveal.delay) / 0.22).clamp(0.0, 1.0);
-        for section in text.sections.iter_mut() {
-            section.style.color.set_a(alpha);
-        }
+        text_color.0.set_alpha(alpha);
 
         if alpha >= 1.0 {
             commands.entity(entity).remove::<RevealIn>();
@@ -182,6 +187,7 @@ pub fn animate_reveal_in(
 
 // --- Screen shake ----------------------------------------------------------
 
+#[derive(Message)]
 pub struct ScreenShakeEvent {
     pub strength: f32,
 }
@@ -204,7 +210,7 @@ pub fn handle_screen_shake_events(
     mut events: MessageReader<ScreenShakeEvent>,
     mut query: Query<&mut ScreenShake>,
 ) {
-    let Some(event) = events.iter().next() else {
+    let Some(event) = events.read().next() else {
         return;
     };
 
@@ -219,7 +225,7 @@ pub fn animate_screen_shake(
     mut query: Query<(&mut ScreenShake, &mut Transform)>,
 ) {
     for (mut shake, mut transform) in query.iter_mut() {
-        if shake.timer.finished() {
+        if shake.timer.is_finished() {
             // Snap back to a known origin: the camera never moves otherwise, and
             // `viewport_to_world_2d` hit-testing depends on this transform.
             transform.translation.x = 0.0;
@@ -229,7 +235,7 @@ pub fn animate_screen_shake(
 
         shake.timer.tick(time.delta());
 
-        let decay = 1.0 - shake.timer.percent();
+        let decay = 1.0 - shake.timer.fraction();
         let amount = shake.strength * decay;
         transform.translation.x = (rand::random::<f32>() * 2.0 - 1.0) * amount;
         transform.translation.y = (rand::random::<f32>() * 2.0 - 1.0) * amount;
@@ -239,6 +245,7 @@ pub fn animate_screen_shake(
 // --- Banner ----------------------------------------------------------------
 
 /// A short, loud, centered announcement: "NIVEL 3", "EM CHAMAS!".
+#[derive(Message)]
 pub struct BannerEvent {
     pub text: String,
     pub color: Color,
@@ -269,26 +276,27 @@ pub fn handle_banner_events(
     mut events: MessageReader<BannerEvent>,
     existing: Query<Entity, With<Banner>>,
 ) {
-    let Some(event) = events.iter().next() else {
+    let Some(event) = events.read().next() else {
         return;
     };
 
     // Only ever one banner on screen; a newer announcement replaces an older one.
     for entity in existing.iter() {
-        commands.entity(entity).despawn_recursive();
+        commands.entity(entity).despawn();
     }
 
     commands
         .spawn((
-            Style {
-                    position_type: PositionType::Absolute,
-                    size: Size::new(Val::Percent(100.0), Val::Percent(100.0)),
-                    justify_content: JustifyContent::Center,
-                    align_items: AlignItems::Center,
-                // Purely decorative: no `Interaction`, so it never eats a tap.
-                z_index: ZIndex::Global(50),
+            Node {
+                position_type: PositionType::Absolute,
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
                 ..default()
             },
+            // Purely decorative: no `Interaction`, so it never eats a tap.
+            GlobalZIndex(50),
             Banner {
                 timer: Timer::from_seconds(1.1, TimerMode::Once),
             },
@@ -306,31 +314,29 @@ pub fn animate_banner(
     mut commands: Commands,
     time: Res<Time>,
     mut banner_query: Query<(Entity, &mut Banner, &Children)>,
-    mut text_query: Query<(&mut Text, &mut Transform)>,
+    mut text_query: Query<(&mut TextColor, &mut Transform)>,
 ) {
     for (entity, mut banner, children) in banner_query.iter_mut() {
         banner.timer.tick(time.delta());
 
-        let progress = banner.timer.percent();
+        let progress = banner.timer.fraction();
         let alpha = if progress < 0.65 {
             1.0
         } else {
             1.0 - (progress - 0.65) / 0.35
         };
         // Overshoot then settle, so it arrives with force.
-        let scale = 1.0 + 0.35 * (1.0 - progress).powi(3);
+        let scale = 1.0 + 0.35 * (1.0f32 - progress).powi(3);
 
         for child in children.iter() {
-            if let Ok((mut text, mut transform)) = text_query.get_mut(*child) {
-                for section in text.sections.iter_mut() {
-                    section.style.color.set_a(alpha);
-                }
+            if let Ok((mut text_color, mut transform)) = text_query.get_mut(child) {
+                text_color.0.set_alpha(alpha);
                 transform.scale = Vec3::new(scale, scale, 1.0);
             }
         }
 
-        if banner.timer.finished() {
-            commands.entity(entity).despawn_recursive();
+        if banner.timer.is_finished() {
+            commands.entity(entity).despawn();
         }
     }
 }

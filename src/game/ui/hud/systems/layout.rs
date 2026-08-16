@@ -38,7 +38,7 @@ pub fn build_hud(
                 .spawn((hud_panel_style(), BackgroundColor(HUD_PANEL_COLOR)))
                 .with_children(|parent| {
                     parent
-                        .spawn((top_bar_style())
+                        .spawn(top_bar_style())
                         .with_children(|parent| {
                             // Each stat gets its own color, so the eye can find
                             // the one it wants without reading the labels.
@@ -111,7 +111,7 @@ pub fn build_hud(
                     // Goal gradient made visible: a bar that is visibly close to
                     // full pulls harder than an unmarked distance.
                     parent
-                        .spawn(progress_track_style(), BackgroundColor(PROGRESS_TRACK_COLOR)))
+                        .spawn((progress_track_style(), BackgroundColor(PROGRESS_TRACK_COLOR)))
                         .with_children(|parent| {
                             parent.spawn((
                                 (progress_fill_style(), BackgroundColor(theme::PRIMARY)),
@@ -128,7 +128,7 @@ pub fn build_hud(
 /// All of them are spawned lit; `update_lives_pips` is what puts them out. That
 /// keeps the "how many are left" decision in one place rather than splitting it
 /// between the builder and the updater.
-fn spawn_lives_row(parent: &mut ChildBuilder, lives: usize) {
+fn spawn_lives_row(parent: &mut ChildSpawnerCommands, lives: usize) {
     parent
         .spawn((lives_row_style(), LivesRow))
         .with_children(|parent| {
@@ -143,7 +143,7 @@ fn spawn_lives_row(parent: &mut ChildBuilder, lives: usize) {
 }
 
 /// A hairline between two stats.
-fn spawn_divider(parent: &mut ChildBuilder) {
+fn spawn_divider(parent: &mut ChildSpawnerCommands) {
     parent.spawn((stat_divider_style(), BackgroundColor(theme::OUTLINE)));
 }
 
@@ -153,7 +153,7 @@ const STAT_TEXT_WIDTH: f32 = 96.0;
 
 /// A label stacked over a value, tagged with the marker used to update it.
 fn spawn_stat<M: Component + Default>(
-    parent: &mut ChildBuilder,
+    parent: &mut ChildSpawnerCommands,
     asset_server: &Res<AssetServer>,
     label: &str,
     initial_value: &str,
@@ -202,12 +202,12 @@ pub fn spawn_back_button(mut commands: Commands, asset_server: Res<AssetServer>)
 
 pub fn despawn_hud(mut commands: Commands, hud_query: Query<Entity, With<HudRoot>>) {
     for entity in hud_query.iter() {
-        commands.entity(entity).despawn_recursive();
+        commands.entity(entity).despawn();
     }
 }
 
 pub fn despawn_back_button(mut commands: Commands, query: Query<Entity, With<BackButtonRoot>>) {
     for entity in query.iter() {
-        commands.entity(entity).despawn_recursive();
+        commands.entity(entity).despawn();
     }
 }

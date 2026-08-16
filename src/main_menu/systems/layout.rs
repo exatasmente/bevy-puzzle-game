@@ -1,4 +1,4 @@
-use bevy::core_pipeline::clear_color::ClearColorConfig;
+use bevy::camera::ClearColorConfig;
 use bevy::prelude::*;
 
 use crate::game::puzzle::components::{level_for_score, GameMode};
@@ -31,7 +31,7 @@ pub fn spawn_main_menu(
 /// used to reset it — so the menu inherited the color of the board the player
 /// just left.
 pub fn reset_background(
-    mut camera_query: Query<(&mut Camera2d, &mut BackgroundTranstion), With<Camera>>,
+    mut camera_query: Query<(&mut Camera, &mut BackgroundTranstion), With<Camera2d>>,
 ) {
     let Ok((mut camera, mut transition)) = camera_query.single_mut() else {
         return;
@@ -68,7 +68,7 @@ pub fn relayout_main_menu(
     saved_run: Res<SavedRun>,
     window_query: Query<&Window>,
 ) {
-    if relayout_events.iter().next().is_none() {
+    if relayout_events.read().next().is_none() {
         return;
     }
 
@@ -77,7 +77,7 @@ pub fn relayout_main_menu(
     };
 
     for entity in main_menu_query.iter() {
-        commands.entity(entity).despawn_recursive();
+        commands.entity(entity).despawn();
     }
 
     build_main_menu(
@@ -92,7 +92,7 @@ pub fn relayout_main_menu(
 
 pub fn despawn_main_menu(mut commands: Commands, main_menu_query: Query<Entity, With<MainMenu>>) {
     for entity in main_menu_query.iter() {
-        commands.entity(entity).despawn_recursive();
+        commands.entity(entity).despawn();
     }
 }
 
@@ -221,7 +221,7 @@ fn wordmark() -> Vec<(String, Color)> {
 /// an optional number underneath.
 #[allow(clippy::too_many_arguments)]
 fn spawn_card<M: Component>(
-    parent: &mut ChildBuilder,
+    parent: &mut ChildSpawnerCommands,
     asset_server: &Res<AssetServer>,
     accent: Color,
     width: f32,

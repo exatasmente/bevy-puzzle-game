@@ -44,15 +44,18 @@ impl PuzzleColor {
 }
 
 
+#[derive(Message)]
 pub struct RenderLevelHistoryEvent {
     pub index: usize,
 }
 
+#[derive(Message)]
 pub struct NewGameEvent {
     pub game_mode: GameMode,
 }
 
 
+#[derive(Message)]
 pub struct StartLevelEvent;
 
 #[derive(Debug, Reflect, PartialEq, Eq, Clone, Copy)]
@@ -1085,6 +1088,7 @@ pub struct LevelColor {
     pub tile : Option<Tile>,
 }
 
+#[derive(Message)]
 pub struct LastInteractionEvent {
     clicked_position: Vec2,
     correct_color_index: usize,
@@ -1280,7 +1284,7 @@ impl RoundIntro {
         };
 
         timer.tick(delta);
-        if timer.finished() {
+        if timer.is_finished() {
             self.timer = None;
         }
     }
@@ -1329,7 +1333,7 @@ impl MemoryPhase {
 
         timer.tick(delta);
 
-        if timer.finished() {
+        if timer.is_finished() {
             self.preview = None;
             self.hidden = true;
             return true;
@@ -1370,7 +1374,7 @@ impl PendingLevelStart {
 
         timer.tick(delta);
 
-        if timer.finished() {
+        if timer.is_finished() {
             self.timer = None;
             return true;
         }

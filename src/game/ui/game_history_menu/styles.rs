@@ -10,7 +10,8 @@ pub fn history_menu_style() -> Node {
     display: Display::Flex,
     justify_content: JustifyContent::Center,
     align_items: AlignItems::Center,
-    size: Size::new(Val::Percent(100.0), Val::Percent(100.0)),
+    width: Val::Percent(100.0),
+    height: Val::Percent(100.0),
     ..Node::DEFAULT
 }
 }
@@ -21,7 +22,8 @@ pub fn history_menu_container_style() -> Node {
     flex_direction: FlexDirection::Column,
     justify_content: JustifyContent::Center,
     align_items: AlignItems::Center,
-    size: Size::new(Val::Percent(100.0), Val::Percent(100.0)),
+    width: Val::Percent(100.0),
+    height: Val::Percent(100.0),
     // Vertical only — see main_menu_style().
     padding: UiRect {
         left: Val::Px(0.0),
@@ -29,7 +31,8 @@ pub fn history_menu_container_style() -> Node {
         top: Val::Px(theme::SPACE_SM),
         bottom: Val::Px(theme::SPACE_SM),
     },
-    gap: Size::new(Val::Px(theme::SPACE_XS), Val::Px(theme::SPACE_XS)),
+    column_gap: Val::Px(theme::SPACE_XS),
+    row_gap: Val::Px(theme::SPACE_XS),
     ..Node::DEFAULT
 }
 }
@@ -42,7 +45,8 @@ pub fn history_card_style(width: f32) -> Node {
         align_items: AlignItems::Center,
         width: Val::Px(width),
         height: Val::Auto,
-        min_size: Size::new(Val::Px(width), Val::Px(theme::TOUCH_TARGET)),
+        min_width: Val::Px(width),
+        min_height: Val::Px(theme::TOUCH_TARGET),
         padding: UiRect::all(Val::Px(theme::SPACE_SM)),
         margin: UiRect::all(Val::Px(theme::SPACE_XS)),
         ..Node::DEFAULT
@@ -67,8 +71,10 @@ pub fn pagination_container_style(width: f32) -> Node {
         flex_direction: FlexDirection::Row,
         justify_content: JustifyContent::Center,
         align_items: AlignItems::Center,
-        size: Size::new(Val::Px(width), Val::Px(theme::TOUCH_TARGET)),
-        gap: Size::new(Val::Px(theme::SPACE_SM), Val::Px(theme::SPACE_SM)),
+        width: Val::Px(width),
+        height: Val::Px(theme::TOUCH_TARGET),
+        column_gap: Val::Px(theme::SPACE_SM),
+        row_gap: Val::Px(theme::SPACE_SM),
         margin: UiRect::all(Val::Px(theme::SPACE_XS)),
         ..Node::DEFAULT
     }
@@ -76,7 +82,8 @@ pub fn pagination_container_style(width: f32) -> Node {
 
 pub fn button_pagination_style() -> Node {
     Node {
-    size: Size::new(Val::Px(theme::TOUCH_TARGET), Val::Px(theme::TOUCH_TARGET)),
+    width: Val::Px(theme::TOUCH_TARGET),
+    height: Val::Px(theme::TOUCH_TARGET),
     justify_content: JustifyContent::Center,
     align_items: AlignItems::Center,
     ..Node::DEFAULT

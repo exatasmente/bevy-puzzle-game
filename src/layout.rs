@@ -15,6 +15,7 @@
 use bevy::prelude::*;
 
 /// Sent when the window has changed size enough to be worth rebuilding for.
+#[derive(Message)]
 pub struct RelayoutEvent;
 
 /// The last window width a screen was built against.
@@ -47,5 +48,5 @@ pub fn track_window_width(
     }
 
     layout_width.0 = window.width();
-    relayout_event_writer.send(RelayoutEvent);
+    relayout_event_writer.write(RelayoutEvent);
 }

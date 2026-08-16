@@ -38,28 +38,32 @@ pub const RESOLUTION: f32 = 16.0 / 9.0;
 
 fn main() {
     App::new()
-        .add_state::<AppState>()
+        .init_state::<AppState>()
         .add_message::<TransitionToStateEvent>()
         .add_message::<InteractionAnimationEvent>()
         .add_message::<layout::RelayoutEvent>()
         .init_resource::<layout::LayoutWidth>()
         .insert_resource(ClearColor(Color::srgb(0.0, 0.0, 0.0)))
         // My Plugins
-        .add_plugin(MainMenuPlugin)
-        .add_plugin(GamePlugin)
-        .add_plugin(WasmPlugin)
-        .add_plugin(FeedbackPlugin)
-        .add_plugin(audio::GameAudioPlugin)
-        .add_plugin(InteractionAnimationPlugin)
+        .add_plugins((
+            MainMenuPlugin,
+            GamePlugin,
+            WasmPlugin,
+            FeedbackPlugin,
+            audio::GameAudioPlugin,
+            InteractionAnimationPlugin,
+        ))
 
         // Startup Systems
-        .add_startup_system(spawn_camera)
+        .add_systems(Startup, spawn_camera)
         // Systems
-        .add_system(transition_to_game_state)
-        .add_system(transition_to_main_menu_state)
-        .add_system(transition_to_game_over_state)
-        .add_system(exit_game)
-        .add_system(layout::track_window_width)
+        .add_systems(Update, (
+            transition_to_game_state,
+            transition_to_main_menu_state,
+            transition_to_game_over_state,
+            exit_game,
+            layout::track_window_width,
+        ))
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 present_mode : PresentMode::AutoNoVsync,
@@ -77,7 +81,7 @@ fn main() {
             }),
             ..default()
         }))
-        .add_plugin(ShapePlugin)
+        .add_plugins(ShapePlugin)
         .run();
 }
 

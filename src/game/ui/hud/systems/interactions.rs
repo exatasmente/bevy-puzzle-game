@@ -19,7 +19,7 @@ pub fn interact_with_pause_button(
                 // Routed through the event rather than setting NextState here,
                 // which is what the rest of the UI does and what the web build
                 // needs.
-                transition_to_state_event_writer.send(TransitionToStateEvent {
+                transition_to_state_event_writer.write(TransitionToStateEvent {
                     state: AppState::History,
                 });
             }
@@ -40,7 +40,7 @@ pub fn interact_with_history_back_button(
         match *interaction {
             Interaction::Pressed => {
                 *background_color = BUTTON_PRESSED.into();
-                transition_to_state_event_writer.send(TransitionToStateEvent {
+                transition_to_state_event_writer.write(TransitionToStateEvent {
                     state: AppState::History,
                 });
             }

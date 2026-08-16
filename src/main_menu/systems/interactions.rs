@@ -35,7 +35,7 @@ pub fn interact_with_play_button(
                 game_history.reset();
                 game_history.set_game_mode(play_button.game_mode);
                 pagination.reset();
-                transition_to_state_event_writer.send(TransitionToStateEvent {
+                transition_to_state_event_writer.write(TransitionToStateEvent {
                     state: AppState::Game,
                 });
             }
@@ -85,7 +85,7 @@ pub fn interact_with_continue_run_button(
                 // the player bounced straight back to the menu.
                 saved_run.store(button.game_mode, button.score, button.lives);
 
-                transition_to_state_event_writer.send(TransitionToStateEvent {
+                transition_to_state_event_writer.write(TransitionToStateEvent {
                     state: AppState::Game,
                 });
             }

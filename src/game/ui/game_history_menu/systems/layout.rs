@@ -30,7 +30,7 @@ pub fn spawn_game_history_menu(
             pagination.set_entity(pagination_container);
         });
 
-    spawn_pagination_event_writer.send(SpawnPaginationEvent);
+    spawn_pagination_event_writer.write(SpawnPaginationEvent);
 }
 
 pub fn despawn_game_history_menu(
@@ -39,7 +39,7 @@ pub fn despawn_game_history_menu(
     mut pagination: ResMut<Pagination>,
 ) {
     for entity in game_history_menu_query.iter() {
-        commands.entity(entity).despawn_recursive();
+        commands.entity(entity).despawn();
     }
 
     pagination.clear_entity();

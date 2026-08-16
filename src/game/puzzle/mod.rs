@@ -23,15 +23,15 @@ impl Plugin for PuzzlePlugin {
             .init_resource::<MemoryPhase>()
             .init_resource::<RoundIntro>()
             .register_type::<ColorPuzzle>()
-            .add_system(start_puzzle_level.in_schedule(OnEnter(crate::AppState::Game)))
-            .add_system(despaw_objects.in_schedule(OnExit(crate::AppState::Game)))
-            .add_system(render_game_history.run_if(in_state(crate::AppState::LevelHistory)))
+            .add_systems(OnEnter(crate::AppState::Game), start_puzzle_level)
+            .add_systems(OnExit(crate::AppState::Game), despaw_objects)
+            .add_systems(Update, render_game_history.run_if(in_state(crate::AppState::LevelHistory)))
             // Not gated on a state: the "jogar novamente" button lives on the
             // GameOverResume screen, and gating this on GameOver alone meant the
             // event was read in a state it is never sent from. It is a no-op in
             // every frame without an event.
-            .add_system(handle_new_game_event)
-            .add_systems((
+            .add_systems(Update, handle_new_game_event)
+            .add_systems(Update, (
                 tick_game_timer,
                 store_last_interaction_state,
                 spawn_objects,
@@ -39,8 +39,8 @@ impl Plugin for PuzzlePlugin {
                 tick_round_intro,
                 hide_memory_board,
                 player_interaction,
-            ).in_set(OnUpdate(crate::AppState::Game)))
-            .add_system(background_transition);
+            ).run_if(in_state(crate::AppState::Game)))
+            .add_systems(Update, background_transition);
 
     }
 }

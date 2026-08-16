@@ -15,21 +15,23 @@ impl Plugin for MainMenuPlugin {
     fn build(&self, app: &mut App) {
         app
             // OnEnter State Systems
-            .add_system(spawn_main_menu.in_schedule(OnEnter(AppState::MainMenu)))
-            .add_system(reset_background.in_schedule(OnEnter(AppState::MainMenu)))
+            .add_systems(
+                OnEnter(AppState::MainMenu),
+                (spawn_main_menu, reset_background),
+            )
             // Systems
             .add_systems(
+                Update,
                 (interact_with_play_button, interact_with_continue_run_button)
-                    .in_set(OnUpdate(AppState::MainMenu)),
+                    .run_if(in_state(AppState::MainMenu)),
             )
             // Rebuilding tears down live `Button` entities, so it runs after
             // `Update` — see the note on `relayout_main_menu`.
-            .add_system(
-                relayout_main_menu
-                    .in_base_set(CoreSet::PostUpdate)
-                    .run_if(in_state(AppState::MainMenu)),
+            .add_systems(
+                PostUpdate,
+                relayout_main_menu.run_if(in_state(AppState::MainMenu)),
             )
             // OnExit State Systems
-            .add_system(despawn_main_menu.in_schedule(OnExit(AppState::MainMenu)));
+            .add_systems(OnExit(AppState::MainMenu), despawn_main_menu);
     }
 }

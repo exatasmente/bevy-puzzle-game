@@ -24,7 +24,7 @@ pub fn interact_with_play_again_button(
         match *interaction {
             Interaction::Pressed => {
                 *color = BUTTON_PRIMARY_PRESSED.into();
-                new_game_event_writer.send(NewGameEvent {
+                new_game_event_writer.write(NewGameEvent {
                     game_mode: game_history.game_mode,
                 });
             }
@@ -45,7 +45,7 @@ pub fn interact_with_history_button(
         match *interaction {
             Interaction::Pressed => {
                 *color = BUTTON_PRESSED.into();
-                transition_to_state_event_writer.send(TransitionToStateEvent {
+                transition_to_state_event_writer.write(TransitionToStateEvent {
                     state: AppState::History,
                 });
             }
@@ -66,7 +66,7 @@ pub fn interact_with_main_menu_button(
         match *interaction {
             Interaction::Pressed => {
                 *color = BUTTON_PRESSED.into();
-                transition_to_state_event_writer.send(TransitionToStateEvent {
+                transition_to_state_event_writer.write(TransitionToStateEvent {
                     state: AppState::MainMenu,
                 });
             }
@@ -83,7 +83,7 @@ pub fn interact_with_game_over_resume_button(
 ) {
     for interaction in button_query.iter_mut() {
         if *interaction == Interaction::Pressed {
-            transition_to_state_event_writer.send(TransitionToStateEvent {
+            transition_to_state_event_writer.write(TransitionToStateEvent {
                 state: AppState::GameOverResume,
             });
         }

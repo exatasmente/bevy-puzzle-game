@@ -10,7 +10,8 @@ pub fn main_menu_style() -> Node {
     flex_direction: FlexDirection::Column,
     justify_content: JustifyContent::Center,
     align_items: AlignItems::Center,
-    size: Size::new(Val::Percent(100.0), Val::Percent(100.0)),
+    width: Val::Percent(100.0),
+    height: Val::Percent(100.0),
     // No horizontal padding: Taffy sizes the content box, so a node at 100%
     // plus padding is wider than its parent and everything inside it slides
     // off the screen edge. The children carry their own width instead.
@@ -29,7 +30,8 @@ pub fn title_style(window_height: f32) -> Node {
         flex_direction: FlexDirection::Column,
         justify_content: JustifyContent::Center,
         align_items: AlignItems::Center,
-        size: Size::new(Val::Percent(100.0), Val::Px((window_height * 0.14).clamp(70.0, 120.0))),
+        width: Val::Percent(100.0),
+        height: Val::Px((window_height * 0.14).clamp(70.0, 120.0)),
         margin: UiRect {
             left: Val::Px(0.0),
             right: Val::Px(0.0),
@@ -53,7 +55,8 @@ pub fn mode_card_height(window_height: f32, modes: usize) -> f32 {
 /// The padded row inside a mode card: chip, then the text column.
 pub fn mode_card_inner_style(height: f32) -> Node {
     Node {
-        min_size: Size::new(Val::Percent(100.0), Val::Px(height)),
+        min_width: Val::Percent(100.0),
+        min_height: Val::Px(height),
         ..theme::outlined_inner_style()
     }
 }
