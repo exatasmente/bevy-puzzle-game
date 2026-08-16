@@ -17,12 +17,12 @@ pub fn interact_with_level_history_option(
         (&Interaction, &mut BackgroundColor, &LevelHistoryOption),
         (Changed<Interaction>, With<LevelHistoryOption>),
     >,
-    mut render_level_history_event_writer: EventWriter<RenderLevelHistoryEvent>,
-    mut transition_to_state_event_writer: EventWriter<TransitionToStateEvent>,
+    mut render_level_history_event_writer: MessageWriter<RenderLevelHistoryEvent>,
+    mut transition_to_state_event_writer: MessageWriter<TransitionToStateEvent>,
 ) {
     for (interaction, mut color, level_history_option) in button_query.iter_mut() {
         match *interaction {
-            Interaction::Clicked => {
+            Interaction::Pressed => {
                 *color = BUTTON_PRESSED.into();
                 transition_to_state_event_writer.send(TransitionToStateEvent {
                     state: AppState::LevelHistory,
@@ -42,12 +42,12 @@ pub fn interact_with_pagination_button(
         (&Interaction, &mut BackgroundColor, &PaginationOption),
         (Changed<Interaction>, With<PaginationOption>),
     >,
-    mut spawn_pagination_event_writer: EventWriter<SpawnPaginationEvent>,
+    mut spawn_pagination_event_writer: MessageWriter<SpawnPaginationEvent>,
     mut pagination: ResMut<Pagination>,
 ) {
     for (interaction, mut color, pagination_button) in button_query.iter_mut() {
         match *interaction {
-            Interaction::Clicked => {
+            Interaction::Pressed => {
                 *color = BUTTON_PRESSED.into();
                 pagination.set_page(pagination_button.index);
                 spawn_pagination_event_writer.send(SpawnPaginationEvent);
@@ -63,13 +63,13 @@ pub fn interact_with_continue_button(
         (&Interaction, &mut BackgroundColor),
         (Changed<Interaction>, With<ContinueButton>),
     >,
-    mut transition_to_state_event_writer: EventWriter<TransitionToStateEvent>,
+    mut transition_to_state_event_writer: MessageWriter<TransitionToStateEvent>,
     puzzle: Res<ColorPuzzle>,
     game_timer: Res<GameTimer>,
 ) {
     for (interaction, mut color) in button_query.iter_mut() {
         match *interaction {
-            Interaction::Clicked => {
+            Interaction::Pressed => {
                 *color = theme::BUTTON_PRIMARY_PRESSED.into();
 
                 // An Infinite run has no clock to expire, so it always resumes.
@@ -97,14 +97,14 @@ pub fn interact_with_end_run_button(
         (&Interaction, &mut BackgroundColor),
         (Changed<Interaction>, With<EndRunButton>),
     >,
-    mut transition_to_state_event_writer: EventWriter<TransitionToStateEvent>,
+    mut transition_to_state_event_writer: MessageWriter<TransitionToStateEvent>,
     puzzle: Res<ColorPuzzle>,
     game_timer: Res<GameTimer>,
     mut game_history: ResMut<GameHistory>,
 ) {
     for (interaction, mut color) in button_query.iter_mut() {
         match *interaction {
-            Interaction::Clicked => {
+            Interaction::Pressed => {
                 *color = theme::BUTTON_DANGER_PRESSED.into();
 
                 // Record what the summary needs, the same way the timer-expiry
@@ -132,7 +132,7 @@ pub fn interact_with_sound_toggle(
 ) {
     for (interaction, mut color) in button_query.iter_mut() {
         match *interaction {
-            Interaction::Clicked => {
+            Interaction::Pressed => {
                 *color = BUTTON_PRESSED.into();
                 volume.cycle();
                 // `update_sound_label` writes the new reading into the existing

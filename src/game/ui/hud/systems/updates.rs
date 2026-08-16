@@ -41,7 +41,7 @@ pub fn update_score_text(
 ) {
     let target = puzzle.get_score();
 
-    let Ok((entity, mut text)) = query.get_single_mut() else {
+    let Ok((entity, mut text)) = query.single_mut() else {
         return;
     };
 
@@ -60,7 +60,7 @@ pub fn update_score_text(
     if (*displayed - target_f32).abs() > 0.01 {
         let remaining = target_f32 - *displayed;
         let rate = SCORE_COUNT_SPEED.max(remaining / MAX_COUNT_SECONDS);
-        let step = rate * time.delta_seconds();
+        let step = rate * time.delta_secs();
         *displayed = if *displayed < target_f32 {
             (*displayed + step.max(0.2)).min(target_f32)
         } else {
@@ -79,7 +79,7 @@ pub fn update_streak_text(
 ) {
     let streak = game_history.current_streak();
 
-    let Ok((entity, mut text)) = query.get_single_mut() else {
+    let Ok((entity, mut text)) = query.single_mut() else {
         return;
     };
 
@@ -106,7 +106,7 @@ pub fn update_timer_text(
     time: Res<Time>,
     mut query: Query<&mut Text, With<TimerValueText>>,
 ) {
-    let Ok(mut text) = query.get_single_mut() else {
+    let Ok(mut text) = query.single_mut() else {
         return;
     };
 
@@ -121,11 +121,11 @@ pub fn update_timer_text(
 
     text.sections[0].style.color = if remaining <= CRITICAL_SECONDS {
         // Pulse: urgency the player feels before they finish reading the number.
-        let pulse = (time.elapsed_seconds() * 12.0).sin() * 0.5 + 0.5;
-        Color::rgb(
-            theme::DANGER.r(),
-            theme::DANGER.g() * (0.4 + 0.6 * pulse),
-            theme::DANGER.b() * (0.4 + 0.6 * pulse),
+        let pulse = (time.elapsed_secs() * 12.0).sin() * 0.5 + 0.5;
+        Color::srgb(
+            theme::DANGER.to_srgba().red,
+            theme::DANGER.to_srgba().green * (0.4 + 0.6 * pulse),
+            theme::DANGER.to_srgba().blue * (0.4 + 0.6 * pulse),
         )
     } else if remaining <= WARNING_SECONDS {
         theme::ACCENT
@@ -176,11 +176,11 @@ pub fn update_lives_pips(
         }
 
         *color = if critical {
-            let pulse = (time.elapsed_seconds() * 12.0).sin() * 0.5 + 0.5;
-            Color::rgb(
-                theme::DANGER.r(),
-                theme::DANGER.g() * (0.4 + 0.6 * pulse),
-                theme::DANGER.b() * (0.4 + 0.6 * pulse),
+            let pulse = (time.elapsed_secs() * 12.0).sin() * 0.5 + 0.5;
+            Color::srgb(
+                theme::DANGER.to_srgba().red,
+                theme::DANGER.to_srgba().green * (0.4 + 0.6 * pulse),
+                theme::DANGER.to_srgba().blue * (0.4 + 0.6 * pulse),
             )
         } else {
             theme::DANGER
@@ -191,14 +191,14 @@ pub fn update_lives_pips(
 
 pub fn update_level_progress(
     puzzle: Res<ColorPuzzle>,
-    mut fill_query: Query<&mut Style, With<LevelProgressFill>>,
+    mut fill_query: Query<&mut Node, With<LevelProgressFill>>,
     mut level_query: Query<&mut Text, With<LevelValueText>>,
 ) {
-    if let Ok(mut style) = fill_query.get_single_mut() {
-        style.size.width = Val::Percent(puzzle.progress_to_next_level() * 100.0);
+    if let Ok(mut style) = fill_query.single_mut() {
+        style.width = Val::Percent(puzzle.progress_to_next_level() * 100.0);
     }
 
-    if let Ok(mut text) = level_query.get_single_mut() {
+    if let Ok(mut text) = level_query.single_mut() {
         // Naming the remaining distance is what turns a bar into a goal. There
         // is no last level any more, so there is no "MAXIMO" case to fall to.
         text.sections[0].value = format!(

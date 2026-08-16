@@ -7,16 +7,16 @@ pub use crate::theme::{
     BUTTON_PRIMARY_PRESSED, SCRIM, SURFACE,
 };
 
-pub const GAME_OVER_MENU_STYLE: Style = Style {
+pub const GAME_OVER_MENU_STYLE: Node = Node {
     position_type: PositionType::Absolute,
     display: Display::Flex,
     justify_content: JustifyContent::Center,
     align_items: AlignItems::Center,
     size: Size::new(Val::Percent(100.0), Val::Percent(100.0)),
-    ..Style::DEFAULT
+    ..Node::DEFAULT
 };
 
-pub const GAME_OVER_MENU_CONTAINER_STYLE: Style = Style {
+pub const GAME_OVER_MENU_CONTAINER_STYLE: Node = Node {
     display: Display::Flex,
     flex_direction: FlexDirection::Column,
     justify_content: JustifyContent::Center,
@@ -32,29 +32,30 @@ pub const GAME_OVER_MENU_CONTAINER_STYLE: Style = Style {
         bottom: Val::Px(theme::SPACE_MD),
     },
     gap: Size::new(Val::Px(theme::SPACE_SM), Val::Px(theme::SPACE_SM)),
-    ..Style::DEFAULT
+    ..Node::DEFAULT
 };
 
 /// Row holding one stat label and its value, pushed to opposite edges so the
 /// numbers line up in a column the eye can scan.
-pub fn stat_row_style(width: f32) -> Style {
-    Style {
+pub fn stat_row_style(width: f32) -> Node {
+    Node {
         flex_direction: FlexDirection::Row,
         justify_content: JustifyContent::SpaceBetween,
         align_items: AlignItems::Center,
-        size: Size::new(Val::Px(width), Val::Auto),
+        width: Val::Px(width),
+        height: Val::Auto,
         min_size: Size::new(Val::Px(width), Val::Px(30.0)),
-        ..Style::DEFAULT
+        ..Node::DEFAULT
     }
 }
 
-pub fn button_style(width: f32) -> Style {
+pub fn button_style(width: f32) -> Node {
     theme::button_style(width)
 }
 
 /// Primary action: taller than the rest so the thumb finds it first.
-pub fn primary_button_style(width: f32) -> Style {
-    Style {
+pub fn primary_button_style(width: f32) -> Node {
+    Node {
         min_size: Size::new(Val::Px(width), Val::Px(60.0)),
         margin: UiRect::all(Val::Px(theme::SPACE_SM)),
         ..theme::button_style(width)

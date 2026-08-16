@@ -12,10 +12,10 @@ pub struct PuzzlePlugin;
 impl Plugin for PuzzlePlugin {
     fn build(&self, app: &mut App) {
         app
-            .add_event::<StartLevelEvent>()
-            .add_event::<LastInteractionEvent>()
-            .add_event::<RenderLevelHistoryEvent>()
-            .add_event::<NewGameEvent>()
+            .add_message::<StartLevelEvent>()
+            .add_message::<LastInteractionEvent>()
+            .add_message::<RenderLevelHistoryEvent>()
+            .add_message::<NewGameEvent>()
             .init_resource::<ColorPuzzle>()
             .init_resource::<GameHistory>()
             .init_resource::<GameTimer>()

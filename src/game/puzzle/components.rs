@@ -244,7 +244,7 @@ impl Default for ColorPuzzle {
 
 /// Whether two colors are the same paint.
 pub fn colors_match(a: Color, b: Color) -> bool {
-    (a.r() - b.r()).abs() < 1e-4 && (a.g() - b.g()).abs() < 1e-4 && (a.b() - b.b()).abs() < 1e-4
+    (a.to_srgba().red - b.to_srgba().red).abs() < 1e-4 && (a.to_srgba().green - b.to_srgba().green).abs() < 1e-4 && (a.to_srgba().blue - b.to_srgba().blue).abs() < 1e-4
 }
 
 // --- The difficulty curve --------------------------------------------------
@@ -463,7 +463,7 @@ impl ColorPuzzle {
             // knows the mode.
             lives: 0,
             current_colors: vec![],
-            base_color: Color::rgb(0.5, 0.5, 0.5),
+            base_color: Color::srgb(0.5, 0.5, 0.5),
             current_tiles: vec![],
             current_slots: vec![],
             current_columns: 0,
@@ -621,7 +621,7 @@ impl ColorPuzzle {
         // The centre of the round, kept off the extremes of lightness so the
         // palette has room to spread in any direction and stay displayable.
         let base_lab = Self::random_base(&mut rng);
-        let base_color = oklab::to_color(base_lab).unwrap_or(Color::rgb(0.5, 0.5, 0.5));
+        let base_color = oklab::to_color(base_lab).unwrap_or(Color::srgb(0.5, 0.5, 0.5));
         let palette = Self::palette(&mut rng, base_lab, pattern.group_count);
 
         // Only filled cells become pieces. An empty cell is simply absent —
@@ -703,7 +703,7 @@ impl ColorPuzzle {
                 }
 
                 let flat = Oklab::from_lch(lightness, 0.0, hue);
-                (flat, oklab::to_color(flat).unwrap_or(Color::rgb(0.5, 0.5, 0.5)))
+                (flat, oklab::to_color(flat).unwrap_or(Color::srgb(0.5, 0.5, 0.5)))
             })
             .collect()
     }
@@ -822,7 +822,7 @@ impl ColorPuzzle {
         let mosaic = wfc::generate(columns, rows, mosaic_violations_for_level(level), rng);
 
         let base_lab = Self::random_base(rng);
-        let base_color = oklab::to_color(base_lab).unwrap_or(Color::rgb(0.5, 0.5, 0.5));
+        let base_color = oklab::to_color(base_lab).unwrap_or(Color::srgb(0.5, 0.5, 0.5));
 
         self.base_color = base_color;
         self.current_colors = vec![base_color; mosaic.tiles.len()];

@@ -18,8 +18,8 @@ pub struct FeedbackPlugin;
 
 impl Plugin for FeedbackPlugin {
     fn build(&self, app: &mut App) {
-        app.add_event::<ScreenShakeEvent>()
-            .add_event::<BannerEvent>()
+        app.add_message::<ScreenShakeEvent>()
+            .add_message::<BannerEvent>()
             .add_system(animate_pop)
             .add_system(animate_floating_text)
             .add_system(handle_screen_shake_events)
@@ -119,7 +119,7 @@ pub fn animate_floating_text(
     for (entity, mut floating, mut transform, mut text) in query.iter_mut() {
         floating.timer.tick(time.delta());
 
-        transform.translation.y += floating.velocity * time.delta_seconds();
+        transform.translation.y += floating.velocity * time.delta_secs();
 
         // Hold the value legible for the first half, then fade.
         let progress = floating.timer.percent();
@@ -167,7 +167,7 @@ pub fn animate_reveal_in(
     mut query: Query<(Entity, &mut RevealIn, &mut Text)>,
 ) {
     for (entity, mut reveal, mut text) in query.iter_mut() {
-        reveal.elapsed += time.delta_seconds();
+        reveal.elapsed += time.delta_secs();
 
         let alpha = ((reveal.elapsed - reveal.delay) / 0.22).clamp(0.0, 1.0);
         for section in text.sections.iter_mut() {
@@ -201,7 +201,7 @@ pub struct ScreenShake {
 }
 
 pub fn handle_screen_shake_events(
-    mut events: EventReader<ScreenShakeEvent>,
+    mut events: MessageReader<ScreenShakeEvent>,
     mut query: Query<&mut ScreenShake>,
 ) {
     let Some(event) = events.iter().next() else {
@@ -266,7 +266,7 @@ pub struct Banner {
 pub fn handle_banner_events(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
-    mut events: EventReader<BannerEvent>,
+    mut events: MessageReader<BannerEvent>,
     existing: Query<Entity, With<Banner>>,
 ) {
     let Some(event) = events.iter().next() else {

@@ -18,11 +18,11 @@ pub fn interact_with_play_again_button(
         (Changed<Interaction>, With<PlayAgainButton>),
     >,
     game_history: Res<GameHistory>,
-    mut new_game_event_writer: EventWriter<NewGameEvent>,
+    mut new_game_event_writer: MessageWriter<NewGameEvent>,
 ) {
     for (interaction, mut color) in button_query.iter_mut() {
         match *interaction {
-            Interaction::Clicked => {
+            Interaction::Pressed => {
                 *color = BUTTON_PRIMARY_PRESSED.into();
                 new_game_event_writer.send(NewGameEvent {
                     game_mode: game_history.game_mode,
@@ -39,11 +39,11 @@ pub fn interact_with_history_button(
         (&Interaction, &mut BackgroundColor),
         (Changed<Interaction>, With<GameOverHistoryButton>),
     >,
-    mut transition_to_state_event_writer: EventWriter<TransitionToStateEvent>,
+    mut transition_to_state_event_writer: MessageWriter<TransitionToStateEvent>,
 ) {
     for (interaction, mut color) in button_query.iter_mut() {
         match *interaction {
-            Interaction::Clicked => {
+            Interaction::Pressed => {
                 *color = BUTTON_PRESSED.into();
                 transition_to_state_event_writer.send(TransitionToStateEvent {
                     state: AppState::History,
@@ -60,11 +60,11 @@ pub fn interact_with_main_menu_button(
         (&Interaction, &mut BackgroundColor),
         (Changed<Interaction>, With<MainMenuButton>),
     >,
-    mut transition_to_state_event_writer: EventWriter<TransitionToStateEvent>,
+    mut transition_to_state_event_writer: MessageWriter<TransitionToStateEvent>,
 ) {
     for (interaction, mut color) in button_query.iter_mut() {
         match *interaction {
-            Interaction::Clicked => {
+            Interaction::Pressed => {
                 *color = BUTTON_PRESSED.into();
                 transition_to_state_event_writer.send(TransitionToStateEvent {
                     state: AppState::MainMenu,
@@ -79,10 +79,10 @@ pub fn interact_with_main_menu_button(
 /// The "fim de jogo" card is itself the button: any tap moves on.
 pub fn interact_with_game_over_resume_button(
     mut button_query: Query<&Interaction, (Changed<Interaction>, With<GameOverMenu>)>,
-    mut transition_to_state_event_writer: EventWriter<TransitionToStateEvent>,
+    mut transition_to_state_event_writer: MessageWriter<TransitionToStateEvent>,
 ) {
     for interaction in button_query.iter_mut() {
-        if *interaction == Interaction::Clicked {
+        if *interaction == Interaction::Pressed {
             transition_to_state_event_writer.send(TransitionToStateEvent {
                 state: AppState::GameOverResume,
             });

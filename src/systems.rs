@@ -25,7 +25,7 @@ pub struct BackgroundTranstion {
 impl Default for BackgroundTranstion {
     fn default() -> Self {
         Self {
-            path: vec![Color::rgb(0.0, 0.0, 0.0)],
+            path: vec![Color::srgb(0.0, 0.0, 0.0)],
             time: 1.0,
             current_time: 1.0,
         }
@@ -35,10 +35,10 @@ impl Default for BackgroundTranstion {
 /// Componentwise lerp between two colors.
 pub fn lerp_color(from: Color, to: Color, amount: f32) -> Color {
     let amount = amount.clamp(0.0, 1.0);
-    Color::rgb(
-        from.r() + (to.r() - from.r()) * amount,
-        from.g() + (to.g() - from.g()) * amount,
-        from.b() + (to.b() - from.b()) * amount,
+    Color::srgb(
+        from.to_srgba().red + (to.to_srgba().red - from.to_srgba().red) * amount,
+        from.to_srgba().green + (to.to_srgba().green - from.to_srgba().green) * amount,
+        from.to_srgba().blue + (to.to_srgba().blue - from.to_srgba().blue) * amount,
     )
 }
 
@@ -112,7 +112,7 @@ pub fn transition_to_game_state(
     mut app_state_next_state: ResMut<NextState<AppState>>,
 ) {
     if keyboard_input.just_pressed(KeyCode::G) {
-        if app_state.0 != AppState::Game {
+        if app_state.get() != AppState::Game {
             app_state_next_state.set(AppState::Game);
             println!("Entered AppState::Game");
         }
@@ -125,7 +125,7 @@ pub fn transition_to_main_menu_state(
     mut app_state_next_state: ResMut<NextState<AppState>>,
 ) {
     if keyboard_input.just_pressed(KeyCode::M) {
-        if app_state.0 != AppState::MainMenu {
+        if app_state.get() != AppState::MainMenu {
             app_state_next_state.set(AppState::MainMenu);
             println!("Entered AppState::MainMenu");
         }
@@ -138,7 +138,7 @@ pub fn transition_to_game_over_state(
     mut app_state_next_state: ResMut<NextState<AppState>>,
 ) {
     if keyboard_input.just_pressed(KeyCode::H) {
-        if app_state.0 != AppState::GameOver {
+        if app_state.get() != AppState::GameOver {
             app_state_next_state.set(AppState::GameOver);
             println!("Entered AppState::GameOver");
         }
@@ -148,7 +148,7 @@ pub fn transition_to_game_over_state(
 
 pub fn exit_game(
     keyboard_input: Res<Input<KeyCode>>,
-    mut app_exit_event_writer: EventWriter<AppExit>,
+    mut app_exit_event_writer: MessageWriter<AppExit>,
 ) {
     if keyboard_input.just_pressed(KeyCode::Escape) {
         app_exit_event_writer.send(AppExit);

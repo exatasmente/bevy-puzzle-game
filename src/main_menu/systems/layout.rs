@@ -18,7 +18,7 @@ pub fn spawn_main_menu(
     // Cards are laid out against the real window width so their labels can be
     // fitted to a pixel width.
     let (width, height) = window_query
-        .get_single()
+        .single()
         .map(|window| (theme::content_width(window.width()), window.height()))
         .unwrap_or((theme::CONTENT_MAX_WIDTH, 720.0));
 
@@ -33,7 +33,7 @@ pub fn spawn_main_menu(
 pub fn reset_background(
     mut camera_query: Query<(&mut Camera2d, &mut BackgroundTranstion), With<Camera>>,
 ) {
-    let Ok((mut camera, mut transition)) = camera_query.get_single_mut() else {
+    let Ok((mut camera, mut transition)) = camera_query.single_mut() else {
         return;
     };
 
@@ -61,7 +61,7 @@ pub fn reset_background(
 /// unconditionally and adds the plugin itself.
 pub fn relayout_main_menu(
     mut commands: Commands,
-    mut relayout_events: EventReader<crate::layout::RelayoutEvent>,
+    mut relayout_events: MessageReader<crate::layout::RelayoutEvent>,
     main_menu_query: Query<Entity, With<MainMenu>>,
     asset_server: Res<AssetServer>,
     best_scores: Res<BestScores>,
@@ -72,7 +72,7 @@ pub fn relayout_main_menu(
         return;
     }
 
-    let Ok(window) = window_query.get_single() else {
+    let Ok(window) = window_query.single() else {
         return;
     };
 

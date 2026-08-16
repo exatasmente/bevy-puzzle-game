@@ -209,7 +209,7 @@ fn reconcile_music(
 
     let wanted = if volume.is_silent() {
         None
-    } else if app_state.0 == AppState::Game {
+    } else if app_state.get() == AppState::Game {
         Some(Track::Round)
     } else {
         Some(Track::Theme)
@@ -280,7 +280,7 @@ fn play_pick_sounds(
     audio: Res<Audio>,
     sounds: Option<Res<Sounds>>,
     volume: Res<Volume>,
-    mut events: EventReader<InteractionAnimationEvent>,
+    mut events: MessageReader<InteractionAnimationEvent>,
 ) {
     let Some(sounds) = sounds else {
         return;
@@ -307,7 +307,7 @@ fn play_level_sound(
     audio: Res<Audio>,
     sounds: Option<Res<Sounds>>,
     volume: Res<Volume>,
-    mut events: EventReader<BannerEvent>,
+    mut events: MessageReader<BannerEvent>,
 ) {
     let Some(sounds) = sounds else {
         return;

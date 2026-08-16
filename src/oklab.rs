@@ -65,9 +65,9 @@ fn linear_to_srgb(channel: f32) -> f32 {
 }
 
 pub fn from_color(color: Color) -> Oklab {
-    let r = srgb_to_linear(color.r());
-    let g = srgb_to_linear(color.g());
-    let b = srgb_to_linear(color.b());
+    let r = srgb_to_linear(color.to_srgba().red);
+    let g = srgb_to_linear(color.to_srgba().green);
+    let b = srgb_to_linear(color.to_srgba().blue);
 
     let long = 0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b;
     let medium = 0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b;
@@ -113,7 +113,7 @@ pub fn to_color(lab: Oklab) -> Option<Color> {
         }
     }
 
-    Some(Color::rgb(
+    Some(Color::srgb(
         linear_to_srgb(r.clamp(0.0, 1.0)),
         linear_to_srgb(g.clamp(0.0, 1.0)),
         linear_to_srgb(b.clamp(0.0, 1.0)),

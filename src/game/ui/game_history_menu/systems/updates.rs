@@ -19,8 +19,8 @@ use crate::theme;
 /// The list is already built from an event, so a relayout is just that event
 /// again — no second code path to keep in step with the first.
 pub fn relayout_game_history_menu(
-    mut relayout_events: EventReader<crate::layout::RelayoutEvent>,
-    mut spawn_pagination_event_writer: EventWriter<SpawnPaginationEvent>,
+    mut relayout_events: MessageReader<crate::layout::RelayoutEvent>,
+    mut spawn_pagination_event_writer: MessageWriter<SpawnPaginationEvent>,
 ) {
     if relayout_events.iter().next().is_some() {
         spawn_pagination_event_writer.send(SpawnPaginationEvent);
@@ -32,7 +32,7 @@ pub fn spawn_pagination_itens(
     game_history: Res<GameHistory>,
     asset_server: Res<AssetServer>,
     mut pagination: ResMut<Pagination>,
-    mut spawn_pagination_event_reader: EventReader<SpawnPaginationEvent>,
+    mut spawn_pagination_event_reader: MessageReader<SpawnPaginationEvent>,
     volume: Res<crate::audio::Volume>,
     window_query: Query<&Window>,
 ) {
@@ -41,7 +41,7 @@ pub fn spawn_pagination_itens(
     }
 
     let width = window_query
-        .get_single()
+        .single()
         .map(|window| theme::content_width(window.width()))
         .unwrap_or(theme::CONTENT_MAX_WIDTH);
     let label_width = history_card_label_width(width);

@@ -8,7 +8,7 @@ use crate::pagination::Pagination;
 pub fn spawn_game_history_menu(
     mut commands: Commands,
     mut pagination: ResMut<Pagination>,
-    mut spawn_pagination_event_writer: EventWriter<SpawnPaginationEvent>,
+    mut spawn_pagination_event_writer: MessageWriter<SpawnPaginationEvent>,
 ) {
     commands
         .spawn((

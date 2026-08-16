@@ -23,7 +23,7 @@ pub fn spawn_game_over_menu(
     window_query: Query<&Window>,
 ) {
     let width = window_query
-        .get_single()
+        .single()
         .map(|window| theme::content_width(window.width()))
         .unwrap_or(theme::CONTENT_MAX_WIDTH);
 
@@ -193,7 +193,7 @@ fn spawn_button<M: Component>(
 /// Rebuilds the summary for the new window size. See `relayout_main_menu`.
 pub fn relayout_game_over_menu(
     mut commands: Commands,
-    mut relayout_events: EventReader<crate::layout::RelayoutEvent>,
+    mut relayout_events: MessageReader<crate::layout::RelayoutEvent>,
     menu_query: Query<Entity, With<GameOverMenu>>,
     asset_server: Res<AssetServer>,
     game_history: Res<GameHistory>,
@@ -204,7 +204,7 @@ pub fn relayout_game_over_menu(
         return;
     }
 
-    let Ok(window) = window_query.get_single() else {
+    let Ok(window) = window_query.single() else {
         return;
     };
 
@@ -237,7 +237,7 @@ pub fn spawn_resume_screen(
     window_query: Query<&Window>,
 ) {
     let width = window_query
-        .get_single()
+        .single()
         .map(|window| theme::content_width(window.width()))
         .unwrap_or(theme::CONTENT_MAX_WIDTH);
 

@@ -17,7 +17,7 @@ pub fn interact_with_play_button(
         (&Interaction, &mut BackgroundColor, &PlayButton),
         (Changed<Interaction>, With<PlayButton>),
     >,
-    mut transition_to_state_event_writer: EventWriter<TransitionToStateEvent>,
+    mut transition_to_state_event_writer: MessageWriter<TransitionToStateEvent>,
     mut puzzle: ResMut<ColorPuzzle>,
     mut game_history: ResMut<GameHistory>,
     mut pagination: ResMut<Pagination>,
@@ -29,7 +29,7 @@ pub fn interact_with_play_button(
         let accent = play_button.game_mode.accent();
 
         match *interaction {
-            Interaction::Clicked => {
+            Interaction::Pressed => {
                 *background_color = card_border_pressed(accent).into();
                 puzzle.setup(&play_button.game_mode);
                 game_history.reset();
@@ -56,7 +56,7 @@ pub fn interact_with_continue_run_button(
         (&Interaction, &mut BackgroundColor, &ContinueRunButton),
         (Changed<Interaction>, With<ContinueRunButton>),
     >,
-    mut transition_to_state_event_writer: EventWriter<TransitionToStateEvent>,
+    mut transition_to_state_event_writer: MessageWriter<TransitionToStateEvent>,
     mut puzzle: ResMut<ColorPuzzle>,
     mut game_history: ResMut<GameHistory>,
     mut pagination: ResMut<Pagination>,
@@ -66,7 +66,7 @@ pub fn interact_with_continue_run_button(
         let accent = button.game_mode.accent();
 
         match *interaction {
-            Interaction::Clicked => {
+            Interaction::Pressed => {
                 *background_color = card_border_pressed(accent).into();
 
                 puzzle.setup(&button.game_mode);

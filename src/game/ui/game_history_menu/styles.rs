@@ -4,16 +4,16 @@ use crate::theme;
 
 pub use crate::theme::{BUTTON, BUTTON_HOVERED, BUTTON_PRESSED, SCRIM, SURFACE};
 
-pub const HISTORY_MENU_STYLE: Style = Style {
+pub const HISTORY_MENU_STYLE: Node = Node {
     position_type: PositionType::Absolute,
     display: Display::Flex,
     justify_content: JustifyContent::Center,
     align_items: AlignItems::Center,
     size: Size::new(Val::Percent(100.0), Val::Percent(100.0)),
-    ..Style::DEFAULT
+    ..Node::DEFAULT
 };
 
-pub const HISTORY_MENU_CONTAINER_STYLE: Style = Style {
+pub const HISTORY_MENU_CONTAINER_STYLE: Node = Node {
     display: Display::Flex,
     flex_direction: FlexDirection::Column,
     justify_content: JustifyContent::Center,
@@ -27,20 +27,21 @@ pub const HISTORY_MENU_CONTAINER_STYLE: Style = Style {
         bottom: Val::Px(theme::SPACE_SM),
     },
     gap: Size::new(Val::Px(theme::SPACE_XS), Val::Px(theme::SPACE_XS)),
-    ..Style::DEFAULT
+    ..Node::DEFAULT
 };
 
 /// One past round: swatch, label, outcome.
-pub fn history_card_style(width: f32) -> Style {
-    Style {
+pub fn history_card_style(width: f32) -> Node {
+    Node {
         flex_direction: FlexDirection::Row,
         justify_content: JustifyContent::SpaceBetween,
         align_items: AlignItems::Center,
-        size: Size::new(Val::Px(width), Val::Auto),
+        width: Val::Px(width),
+        height: Val::Auto,
         min_size: Size::new(Val::Px(width), Val::Px(theme::TOUCH_TARGET)),
         padding: UiRect::all(Val::Px(theme::SPACE_SM)),
         margin: UiRect::all(Val::Px(theme::SPACE_XS)),
-        ..Style::DEFAULT
+        ..Node::DEFAULT
     }
 }
 
@@ -52,12 +53,12 @@ pub fn history_card_label_width(width: f32) -> f32 {
 
 pub const SWATCH_SIZE: f32 = 32.0;
 
-pub fn button_style(width: f32) -> Style {
+pub fn button_style(width: f32) -> Node {
     theme::button_style(width)
 }
 
-pub fn pagination_container_style(width: f32) -> Style {
-    Style {
+pub fn pagination_container_style(width: f32) -> Node {
+    Node {
         display: Display::Flex,
         flex_direction: FlexDirection::Row,
         justify_content: JustifyContent::Center,
@@ -65,15 +66,15 @@ pub fn pagination_container_style(width: f32) -> Style {
         size: Size::new(Val::Px(width), Val::Px(theme::TOUCH_TARGET)),
         gap: Size::new(Val::Px(theme::SPACE_SM), Val::Px(theme::SPACE_SM)),
         margin: UiRect::all(Val::Px(theme::SPACE_XS)),
-        ..Style::DEFAULT
+        ..Node::DEFAULT
     }
 }
 
-pub const BUTTON_PAGINATION_STYLE: Style = Style {
+pub const BUTTON_PAGINATION_STYLE: Node = Node {
     size: Size::new(Val::Px(theme::TOUCH_TARGET), Val::Px(theme::TOUCH_TARGET)),
     justify_content: JustifyContent::Center,
     align_items: AlignItems::Center,
-    ..Style::DEFAULT
+    ..Node::DEFAULT
 };
 
 pub fn get_title_text_style(asset_server: &Res<AssetServer>) -> TextStyle {

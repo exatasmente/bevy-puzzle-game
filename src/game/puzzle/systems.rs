@@ -22,10 +22,10 @@ pub struct LastClick;
 /// answer to one tap.
 #[derive(SystemParam)]
 pub struct PickEvents<'w> {
-    start_level: EventWriter<'w, StartLevelEvent>,
-    last_interaction: EventWriter<'w, LastInteractionEvent>,
-    animation: EventWriter<'w, InteractionAnimationEvent>,
-    banner: EventWriter<'w, BannerEvent>,
+    start_level: MessageWriter<'w, StartLevelEvent>,
+    last_interaction: MessageWriter<'w, LastInteractionEvent>,
+    animation: MessageWriter<'w, InteractionAnimationEvent>,
+    banner: MessageWriter<'w, BannerEvent>,
 }
 
 pub fn player_interaction(
@@ -353,7 +353,7 @@ pub fn advance_pending_level(
     game_timer: Res<GameTimer>,
     mut game_history: ResMut<GameHistory>,
     mut pending_level_start: ResMut<PendingLevelStart>,
-    mut start_level_event_writer: EventWriter<StartLevelEvent>,
+    mut start_level_event_writer: MessageWriter<StartLevelEvent>,
     mut app_state_next_state: ResMut<NextState<crate::AppState>>,
 ) {
     if !pending_level_start.tick(time.delta()) {
@@ -374,7 +374,7 @@ pub fn advance_pending_level(
 pub fn render_game_history(
     mut commands: Commands,
     game_history: Res<GameHistory>,
-    mut render_game_history_events: EventReader<RenderLevelHistoryEvent>,
+    mut render_game_history_events: MessageReader<RenderLevelHistoryEvent>,
     mut object_query: Query<Entity, With<PuzzleColor>>,
     mut last_click_query: Query<Entity, With<LastClick>>,
     mut camera_query: Query<(&mut Camera2d, &mut BackgroundTranstion), With<Camera>>,
@@ -488,7 +488,7 @@ pub fn render_game_history(
 }
 
 pub fn store_last_interaction_state(
-    mut last_interaction_events: EventReader<LastInteractionEvent>,
+    mut last_interaction_events: MessageReader<LastInteractionEvent>,
     mut game_history: ResMut<GameHistory>,
 ) {
     let level_history =last_interaction_events.iter().next();
@@ -529,7 +529,7 @@ pub fn background_transition(
 
     if background_transition.is_in_transition() {
         camera.clear_color = ClearColorConfig::Custom(background_transition.get_current_color());
-        background_transition.update(time.delta_seconds());
+        background_transition.update(time.delta_secs());
     }
 }
 
@@ -573,7 +573,7 @@ pub fn spawn_objects(
     mut last_click_query: Query<Entity, With<LastClick>>,
     mut memory_phase: ResMut<MemoryPhase>,
     mut round_intro: ResMut<RoundIntro>,
-    mut start_level_events: EventReader<StartLevelEvent>,
+    mut start_level_events: MessageReader<StartLevelEvent>,
 ) {
 
     if start_level_events.iter().next().is_none() {
@@ -697,7 +697,7 @@ pub fn spawn_objects(
 }
 
 pub fn start_puzzle_level(
-    mut start_level_event_writer: EventWriter<StartLevelEvent>,
+    mut start_level_event_writer: MessageWriter<StartLevelEvent>,
     mut puzzle: ResMut<ColorPuzzle>,
     mut game_timer: ResMut<GameTimer>,
     mut game_history: ResMut<GameHistory>,
@@ -738,7 +738,7 @@ pub fn start_puzzle_level(
 }
 
 pub fn handle_new_game_event(
-    mut new_game_event_reader: EventReader<NewGameEvent>,
+    mut new_game_event_reader: MessageReader<NewGameEvent>,
     mut puzzle: ResMut<ColorPuzzle>,
     mut game_timer: ResMut<GameTimer>,
     mut game_history: ResMut<GameHistory>,

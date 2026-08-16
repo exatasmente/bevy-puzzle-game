@@ -39,11 +39,11 @@ pub const RESOLUTION: f32 = 16.0 / 9.0;
 fn main() {
     App::new()
         .add_state::<AppState>()
-        .add_event::<TransitionToStateEvent>()
-        .add_event::<InteractionAnimationEvent>()
-        .add_event::<layout::RelayoutEvent>()
+        .add_message::<TransitionToStateEvent>()
+        .add_message::<InteractionAnimationEvent>()
+        .add_message::<layout::RelayoutEvent>()
         .init_resource::<layout::LayoutWidth>()
-        .insert_resource(ClearColor(Color::rgb(0.0, 0.0, 0.0)))
+        .insert_resource(ClearColor(Color::srgb(0.0, 0.0, 0.0)))
         // My Plugins
         .add_plugin(MainMenuPlugin)
         .add_plugin(GamePlugin)

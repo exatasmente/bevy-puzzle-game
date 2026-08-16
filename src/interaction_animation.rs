@@ -40,8 +40,8 @@ impl Plugin for InteractionAnimationPlugin {
 pub fn handle_interaction_animation_events(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
-    mut interaction_animation_events: EventReader<InteractionAnimationEvent>,
-    mut screen_shake_event_writer: EventWriter<ScreenShakeEvent>,
+    mut interaction_animation_events: MessageReader<InteractionAnimationEvent>,
+    mut screen_shake_event_writer: MessageWriter<ScreenShakeEvent>,
 ) {
     let Some(event) = interaction_animation_events.iter().next() else {
         return;

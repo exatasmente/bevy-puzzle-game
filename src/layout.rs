@@ -36,9 +36,9 @@ const SIGNIFICANT_CHANGE: f32 = 4.0;
 pub fn track_window_width(
     windows: Query<&Window>,
     mut layout_width: ResMut<LayoutWidth>,
-    mut relayout_event_writer: EventWriter<RelayoutEvent>,
+    mut relayout_event_writer: MessageWriter<RelayoutEvent>,
 ) {
-    let Ok(window) = windows.get_single() else {
+    let Ok(window) = windows.single() else {
         return;
     };
 
