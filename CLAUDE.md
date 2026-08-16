@@ -523,13 +523,26 @@ twice for one mistake.
 - `Cargo.lock` **is committed** — this is an executable, not a library. It used to be
   gitignored, which meant the versions floated within their semver ranges and an
   unexplained break could be an upstream release rather than a local change.
-- **Two dependencies are named nowhere in `src/` and must stay anyway.** `uuid` and
-  `getrandom`, both under the `cfg(target_arch = "wasm32")` target table, exist only to
-  turn on a feature a transitive dependency needs in order to build for the browser.
-  Removing them fails the wasm build with "specify a source of randomness"; it does not
-  fail the native one, so `cargo check` alone will not catch it — check with
+- **Four dependencies are named nowhere in `src/` and must stay anyway.** `uuid` and
+  the three `getrandom` majors, all under the `cfg(target_arch = "wasm32")` target
+  table, exist only to turn on features a transitive dependency needs in order to build
+  for the browser. Removing them fails the wasm build; it does not fail the native one,
+  so `cargo check` alone will not catch it — check with
   `cargo check --target wasm32-unknown-unknown`, which needs no GPU and no system deps.
-  `web-sys`, in the same table, is genuinely used, by `src/storage.rs`.
+
+  **There are three `getrandom` majors in the graph at once**, reached by different
+  dependencies, and each asks for its browser backend differently: 0.2 wants feature
+  `js`; 0.3 wants feature `wasm_js` **and** `--cfg getrandom_backend="wasm_js"`, and
+  says in a `compile_error` that the feature alone is not enough; 0.4 wants `wasm_js`
+  alone, the cfg requirement having been dropped again. All three must be answered or
+  the build stops at whichever it reaches first. The cfg lives in
+  `.cargo/config.toml` under the wasm target — **and a `RUSTFLAGS` environment variable
+  overrides config `rustflags` rather than adding to them**, so setting `RUSTFLAGS` for
+  any other reason silently removes it. The deploy workflow deliberately sets none.
+
+  This one reached `master` and broke the deployed build while native stayed green,
+  which is the whole argument for running the wasm check before believing a dependency
+  bump. `web-sys`, in the same table, is genuinely used, by `src/storage.rs`.
   (`bevy_rapier2d`, `bevy-inspector-egui`, `lazy_static`, `wasm-bindgen` and
   `bevy_utils` really were unused, and are gone.)
 - Tests live in `src/wfc.rs`, `src/board.rs`, `src/mosaic_pattern.rs` and
