@@ -1,7 +1,7 @@
 # CLAUDE.md
 
 Guidance for AI assistants working in this repository.
-
+ 
 ## What this project is
 
 A color-discrimination puzzle game ("Color Puzzle") built with **Bevy 0.19** in Rust.
